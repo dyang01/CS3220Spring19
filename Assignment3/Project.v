@@ -121,7 +121,7 @@ module Project(
     else if(!stall_pipe)
       PC_FE <= pcpred_FE; //SAME AS pcplus_FE because there is no branch prediction
     else
-      PC_FE <= PC_FE + INSTSIZE;
+      PC_FE <= PC_FE;
   end
 
   // This is the value of "incremented PC", computed in the FE stage
@@ -302,15 +302,12 @@ module Project(
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
-  assign rd_mem_EX_w = ctrlsig_ID[2]; //added
-  assign wr_mem_EX_w = ctrlsig_ID[1]; //added
-  assign wr_reg_EX_w = ctrlsig_ID[0];
 
-  assign ctrlsig_EX_w = { rd_mem_EX_w, wr_mem_EX_w, wr_reg_EX_w };
+  assign ctrlsig_EX_w = { ctrlsig_ID[2], ctrlsig_ID[1], ctrlsig_ID[0] };
   
   // TODO: Specify signals such as mispred_EX_w, pcgood_EX_w
-  assign mispred_EX_w = (op1_ID_w == OP1_ALUR) && ((op2_ID_w == OP2_EQ) || (op2_ID_w == OP2_LT) || (op2_ID_w == OP2_LE) || (op2_ID_w == OP2_NE));
-  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (pcplus_FE + 4*sxt_imm_ID_w);
+  assign mispred_EX_w = is_jmp_EX_w || (is_br_EX_w && br_cond_EX);
+  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (PC_ID + 4*sxt_imm_ID_w);
 
   // EX_latch
   always @ (posedge clk or posedge reset) begin
