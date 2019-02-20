@@ -180,8 +180,8 @@ module Project(
   assign op1_ID_w = inst_FE[31:26];
   assign op2_ID_w = inst_FE[25:18];
   assign imm_ID_w = inst_FE[23:8];
-  assign rd_ID_w = inst_FE[11:9];
-  assign rs_ID_w = inst_FE[8:4];
+  assign rd_ID_w = inst_FE[11:8];
+  assign rs_ID_w = inst_FE[7:4];
   assign rt_ID_w = inst_FE[3:0];
 
   // Read register values
@@ -224,6 +224,7 @@ module Project(
       regval2_ID  <= {DBITS{1'b0}};
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
+      immval_ID <= {DBITS{1'b0}}; //added
     end else begin
       PC_ID  <= PC_FE;
     // DONE: Specify ID latches
@@ -234,6 +235,7 @@ module Project(
       regval2_ID  <= regval2_ID_w;
       wregno_ID  <= wregno_ID_w;
       ctrlsig_ID <= ctrlsig_ID_w;
+      immval_ID <= sxt_imm_ID_w;
     end
   end
 
