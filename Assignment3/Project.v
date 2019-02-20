@@ -211,7 +211,7 @@ module Project(
       ((op1_ID == 6'b001100) && (rs_used)) ||
       ((op1_ID == 6'b010xxx) && (rs_used)) ||
       ((op1_ID == 6'b100xxx) && (rs_used));
-  assign wregno_ID_w = (op1_ID == 6'b000xxx) ? rd_ID_w : rt_ID_w;	//assume only EXT has wregno == rd.
+  assign wregno_ID_w = (op1_ID == 6'b000xxx) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
   // ID_latch
   always @ (posedge clk or posedge reset) begin
@@ -246,10 +246,10 @@ module Project(
 
   wire is_br_EX_w;
   wire is_jmp_EX_w;
-  wire rd_mem_EX_w;
-  wire wr_mem_EX_w;
+  wire rd_mem_EX_w; //added wire
+  wire wr_mem_EX_w; //added wire
   wire [DBITS-1:0] pcgood_EX_w;
-  wire [2:0] ctrlsig_EX_w;
+  wire [2:0] ctrlsig_EX_w;  //added wire
 
   reg [INSTBITS-1:0] inst_EX; /* This is for debugging */
   reg br_cond_EX;
@@ -271,7 +271,7 @@ module Project(
 
   always @ (op1_ID or op2_ID or regval1_ID or regval2_ID or immval_ID) begin
     if(op1_ID == OP1_ALUR)
-      case (op2_ID)
+      case (op2_ID) //TODO complete op2
         OP2_EQ    : aluout_EX_r = {31'b0, regval1_ID == regval2_ID};
         OP2_LT    : aluout_EX_r = {31'b0, regval1_ID < regval2_ID};
         OP2_LE    : aluout_EX_r = {31'b0, regval1_ID <= regval2_ID};
@@ -302,8 +302,8 @@ module Project(
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
-  assign rd_mem_EX_w = ctrlsig_ID[2];
-  assign wr_mem_EX_w = ctrlsig_ID[1];
+  assign rd_mem_EX_w = ctrlsig_ID[2]; //added
+  assign wr_mem_EX_w = ctrlsig_ID[1]; //added
   assign wr_reg_EX_w = ctrlsig_ID[0];
 
   assign ctrlsig_EX_w = { rd_mem_EX_w, wr_mem_EX_w, wr_reg_EX_w };
