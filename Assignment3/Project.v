@@ -97,6 +97,9 @@ module Project(
   wire stall_pipe;
   wire mispred_EX_w;
   
+  wire swag = 2'b10 == 2'b00;
+  wire fuck = 2'b00 == 2'b00;
+  
   reg [DBITS-1:0] pcgood_EX;
   reg [DBITS-1:0] PC_FE;
   reg [INSTBITS-1:0] inst_FE;   //the actual instruction reg
@@ -193,25 +196,25 @@ module Project(
 
   // DONE: Specify control signals such as is_br_ID_w, is_jmp_ID_w, rd_mem_ID_w, etc.
   // You may add or change control signals if needed
-  assign is_br_ID_w = (op1_ID_w == 6'b0010xx); //see lecture 2 slide 24
+  assign is_br_ID_w = (op1_ID_w[5:2] == 4'b0010); //see lecture 2 slide 24
   assign is_jmp_ID_w = (op1_ID_w == 6'b001100); //assuming this means JMP == JAL
-  assign rd_mem_ID_w = (op1_ID_w == 6'b010xxx); //see lecture 2 slide 24
-  assign wr_mem_ID_w = (op1_ID_w == 6'b011xxx); //see lec 2 slide 24
+  assign rd_mem_ID_w = (op1_ID_w[5:3] == 3'b010); //see lecture 2 slide 24
+  assign wr_mem_ID_w = (op1_ID_w[5:3] == 3'b011); //see lec 2 slide 24
   assign wr_reg_ID_w = (op1_ID_w == 6'b000000) || (op1_ID_w == 6'b001100) ||
-    (op1_ID_w == 6'b010010) || (op1_ID_w == 6'b100xxx); //includes EXT, JAL, LW, ALUI
+    (op1_ID_w == 6'b010010) || (op1_ID_w[5:3] == 3'b100); //includes EXT, JAL, LW, ALUI
 
   assign ctrlsig_ID_w = {is_br_ID_w, is_jmp_ID_w, rd_mem_ID_w, wr_mem_ID_w, wr_reg_ID_w};
   
   // TODO: Specify stall condition
   // assign stall_pipe = ... ;
   //if (EXT and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
-  wire rs_used = (wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w); 
-  wire rt_used = (wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w);
-  assign stall_pipe = ((op1_ID == 6'b000xxx) && (rs_used || rt_used)) ||
-      ((op1_ID == 6'b001100) && (rs_used)) ||
-      ((op1_ID == 6'b010xxx) && (rs_used)) ||
-      ((op1_ID == 6'b100xxx) && (rs_used));
-  assign wregno_ID_w = (op1_ID == 6'b000xxx) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
+  wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w)) && (rs_ID_w != 0); 
+  wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w)) && (rt_ID_w != 0);
+  assign stall_pipe = ((op1_ID[5:3] == 3'b000) && (rs_used || rt_used)) ||
+      ((op1_ID[5:3] == 3'b001) && (rs_used)) ||
+      ((op1_ID[5:3] == 3'b010) && (rs_used)) ||
+      ((op1_ID[5:3] == 3'b100) && (rs_used));
+  assign wregno_ID_w = (op1_ID[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
   // ID_latch
   always @ (posedge clk or posedge reset) begin
@@ -309,7 +312,7 @@ module Project(
   
   // TODO: Specify signals such as mispred_EX_w, pcgood_EX_w
   assign mispred_EX_w = is_jmp_EX_w || (is_br_EX_w && br_cond_EX);
-  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (PC_ID + 4*sxt_imm_ID_w);
+  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (PC_ID + INSTSIZE + 4*sxt_imm_ID_w);
 
   // EX_latch
   always @ (posedge clk or posedge reset) begin
