@@ -116,7 +116,7 @@ module Project(
   always @ (posedge clk or posedge reset) begin
     if(reset)
       PC_FE <= STARTPC;
-    else if(mispred_EX)
+    else if(mispred_EX_w)
       PC_FE <= pcgood_EX;   //pcgood set to place that branch would go to
     else if(!stall_pipe)
       PC_FE <= pcpred_FE; //SAME AS pcplus_FE because there is no branch prediction
@@ -133,10 +133,16 @@ module Project(
   always @ (posedge clk or posedge reset) begin
     if(reset)
       inst_FE <= {INSTBITS{1'b0}};
+    else if(!stall_pipe)
+	    //DONE: Specify inst_FE considering misprediction and stall
+	    inst_FE <= inst_FE_w; //idk
     else
-      //DONE: Specify inst_FE considering misprediction and stall
-      inst_FE <= inst_FE_w; //idk
-      
+    	inst_FE <= inst_FE;
+  end
+
+  //
+  always @(posedge mispred_EX) begin
+  	inst_FE <= {INSTBITS{1'b0}};
   end
 
 
@@ -193,25 +199,25 @@ module Project(
 
   // DONE: Specify control signals such as is_br_ID_w, is_jmp_ID_w, rd_mem_ID_w, etc.
   // You may add or change control signals if needed
-  assign is_br_ID_w = (op1_ID_w == 6'b0010xx); //see lecture 2 slide 24
+  assign is_br_ID_w = (op1_ID_w[5:2] == 4'b0010); //see lecture 2 slide 24
   assign is_jmp_ID_w = (op1_ID_w == 6'b001100); //assuming this means JMP == JAL
-  assign rd_mem_ID_w = (op1_ID_w == 6'b010xxx); //see lecture 2 slide 24
-  assign wr_mem_ID_w = (op1_ID_w == 6'b011xxx); //see lec 2 slide 24
+  assign rd_mem_ID_w = (op1_ID_w[5:3] == 3'b010); //see lecture 2 slide 24
+  assign wr_mem_ID_w = (op1_ID_w[5:3] == 3'b011); //see lec 2 slide 24
   assign wr_reg_ID_w = (op1_ID_w == 6'b000000) || (op1_ID_w == 6'b001100) ||
-    (op1_ID_w == 6'b010010) || (op1_ID_w == 6'b100xxx); //includes EXT, JAL, LW, ALUI
+    (op1_ID_w == 6'b010010) || (op1_ID_w[5:3] == 3'b100); //includes EXT, JAL, LW, ALUI
 
   assign ctrlsig_ID_w = {is_br_ID_w, is_jmp_ID_w, rd_mem_ID_w, wr_mem_ID_w, wr_reg_ID_w};
   
   // TODO: Specify stall condition
   // assign stall_pipe = ... ;
   //if (EXT and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
-  wire rs_used = (wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w); 
-  wire rt_used = (wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w);
-  assign stall_pipe = ((op1_ID == 6'b000xxx) && (rs_used || rt_used)) ||
-      ((op1_ID == 6'b001100) && (rs_used)) ||
-      ((op1_ID == 6'b010xxx) && (rs_used)) ||
-      ((op1_ID == 6'b100xxx) && (rs_used));
-  assign wregno_ID_w = (op1_ID == 6'b000xxx) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
+  wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w)) && (rs_ID_w != 0); 
+  wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w)) && (rt_ID_w != 0);
+  assign stall_pipe = (((op1_ID[5:3] == 3'b000) && (rs_used || rt_used)) ||
+      ((op1_ID[5:3] == 3'b001) && (rs_used)) ||
+      ((op1_ID[5:3] == 3'b010) && (rs_used)) ||
+      ((op1_ID[5:3] == 3'b100) && (rs_used))) && (wregno_MEM != 0 || wregno_EX != 0);
+  assign wregno_ID_w = (op1_ID[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
   // ID_latch
   always @ (posedge clk or posedge reset) begin
@@ -239,6 +245,18 @@ module Project(
     end
   end
 
+  always @(posedge mispred_EX or posedge stall_pipe) begin
+  	PC_ID  <= {DBITS{1'b0}};
+    inst_ID  <= {INSTBITS{1'b0}};
+    op1_ID   <= {OP1BITS{1'b0}};
+    op2_ID   <= {OP2BITS{1'b0}};
+    regval1_ID  <= {DBITS{1'b0}};
+    regval2_ID  <= {DBITS{1'b0}};
+    wregno_ID  <= {REGNOBITS{1'b0}};
+    ctrlsig_ID <= 5'h0;
+    immval_ID <= {DBITS{1'b0}}; //added
+  end
+
   // ----------------------------------------------------------------------------------
   // START PHILIP'S WORK --------------------------------------------------------------
   // ----------------------------------------------------------------------------------
@@ -263,11 +281,11 @@ module Project(
 
   always @ (op1_ID or regval1_ID or regval2_ID) begin
     case (op1_ID)
-      OP1_BEQ : br_cond_EX = (regval1_ID == regval2_ID);
-      OP1_BLT : br_cond_EX = (regval1_ID < regval2_ID);
-      OP1_BLE : br_cond_EX = (regval1_ID <= regval2_ID);
-      OP1_BNE : br_cond_EX = (regval1_ID != regval2_ID);
-      default : br_cond_EX = 1'b0;
+      OP1_BEQ : br_cond_EX <= (regval1_ID == regval2_ID);
+      OP1_BLT : br_cond_EX <= (regval1_ID < regval2_ID);
+      OP1_BLE : br_cond_EX <= (regval1_ID <= regval2_ID);
+      OP1_BNE : br_cond_EX <= (regval1_ID != regval2_ID);
+      default : br_cond_EX <= 1'b0;
     endcase
   end
 
@@ -304,15 +322,12 @@ module Project(
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
-  assign rd_mem_EX_w = ctrlsig_ID[2]; //added
-  assign wr_mem_EX_w = ctrlsig_ID[1]; //added
-  assign wr_reg_EX_w = ctrlsig_ID[0];
 
-  assign ctrlsig_EX_w = { rd_mem_EX_w, wr_mem_EX_w, wr_reg_EX_w };
+  assign ctrlsig_EX_w = { ctrlsig_ID[2], ctrlsig_ID[1], ctrlsig_ID[0] };
   
   // TODO: Specify signals such as mispred_EX_w, pcgood_EX_w
-  assign mispred_EX_w = (op1_ID_w == OP1_ALUR) && ((op2_ID_w == OP2_EQ) || (op2_ID_w == OP2_LT) || (op2_ID_w == OP2_LE) || (op2_ID_w == OP2_NE));
-  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (pcplus_FE + 4*sxt_imm_ID_w);
+  assign mispred_EX_w = is_jmp_EX_w || (is_br_EX_w && br_cond_EX);
+  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (PC_ID + INSTSIZE + 4*sxt_imm_ID_w);
 
   // EX_latch
   always @ (posedge clk or posedge reset) begin
