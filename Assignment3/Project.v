@@ -25,8 +25,8 @@ module Project(
   parameter ADDRSW   = 32'hFFFFF090;
 
   // Change this to fmedian2.mif before submitting
-  // parameter IMEMINITFILE = "Test.mif";
-  parameter IMEMINITFILE = "fmedian2.mif";
+  parameter IMEMINITFILE = "Test.mif";
+  // parameter IMEMINITFILE = "fmedian2.mif";
   
   parameter IMEMADDRBITS = 16;
   parameter IMEMWORDBITS = 2;
@@ -109,7 +109,7 @@ module Project(
   // This statement is used to initialize the I-MEM
   // during simulation using Model-Sim
   initial begin
-   $readmemh("fmedian2.hex", imem);
+   $readmemh("Test.hex", imem);
   end
     
   assign inst_FE_w = imem[PC_FE[IMEMADDRBITS-1:IMEMWORDBITS]];  //imem[ upper bits of PC_FE]
@@ -180,11 +180,7 @@ module Project(
   reg [REGNOBITS-1:0] wregno_EX;
   reg [REGNOBITS-1:0] wregno_MEM;
   reg [INSTBITS-1:0] inst_ID;
-
-  wire [3:0] fuck = 4'b0011;
-  wire [3:0] swag = 4'b0101;
-  wire [3:0] reee = ~(fuck | swag);
-  //wire aji = fuck ~| swag;
+  reg ctrlsig_MEM;
 
   // DONE: Specify signals such as op*_ID_w, imm_ID_w, r*_ID_w
   assign op1_ID_w = inst_FE[31:26];
@@ -217,14 +213,31 @@ module Project(
   //if (EXT and wregno == rs or rt) or (BR and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
   wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w) || (wregno_ID == rs_ID_w)) && (rs_ID_w != 0); 
   wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w) || (wregno_ID == rt_ID_w)) && (rt_ID_w != 0);
-  wire stall_from_MEM = ((wregno_MEM == rs_ID_w) || (wregno_MEM == rt_ID_w)) && (wregno_MEM != 0);
-	wire stall_from_EX = ((wregno_EX == rs_ID_w) || (wregno_EX == rt_ID_w)) && (wregno_EX != 0);
-	wire stall_from_ID = ((wregno_ID == rs_ID_w) || (wregno_ID == rt_ID_w)) && (wregno_ID != 0);
-  assign stall_pipe = (((op1_ID[5:3] == 3'b000) && (rs_used || rt_used)) ||
-  		((op1_ID[5:2] == 4'b0010) && (rs_used || rt_used)) ||
-      ((op1_ID[5:2] == 4'b0011) && (rs_used)) ||
-      ((op1_ID[5:3] == 3'b010) && (rs_used)) ||
-      ((op1_ID[5:3] == 3'b100) && (rs_used))) && (stall_from_MEM || stall_from_EX || stall_from_ID);
+         //  wire rs_read_ID = op1_ID_w != 6'b000000;
+         //  wire rt_read_ID = (op1_ID_w[5:3] != 3'b100) && (op1_ID_w != OP1_JAL) && (op1_ID_w != OP1_LW) && (op1_ID_w != 6'b000000);
+         //  wire stall_from_MEM = ((rs_read_ID && (wregno_MEM == rs_ID_w)) || (rt_read_ID && (wregno_MEM == rt_ID_w))) && (wregno_MEM != 0) && ctrlsig_MEM;
+        	// wire stall_from_EX = ((rs_read_ID && (wregno_EX == rs_ID_w)) || (rt_read_ID && (wregno_EX == rt_ID_w))) && (wregno_EX != 0) && wr_reg_MEM_w;
+        	// wire stall_from_ID = ((rs_read_ID && (wregno_ID == rs_ID_w)) || (rt_read_ID && (wregno_ID == rt_ID_w))) && (wregno_ID != 0) && wr_reg_EX_w;
+          
+          wire stall_from_MEM = ((wregno_MEM == rs_ID_w) || (wregno_MEM == rt_ID_w)) && (wregno_MEM != 0);
+          wire stall_from_EX = ((wregno_EX == rs_ID_w) || (wregno_EX == rt_ID_w)) && (wregno_EX != 0);
+          wire stall_from_ID = ((wregno_ID == rs_ID_w) || (wregno_ID == rt_ID_w)) && (wregno_ID != 0);
+
+         //  assign stall_pipe = stall_from_ID || stall_from_EX || stall_from_MEM;
+  assign stall_pipe = (
+      ((op1_ID_w[5:3] == 3'b000) && (rs_used || rt_used)) ||
+  		((op1_ID_w[5:2] == 4'b0010) && (rs_used || rt_used)) ||
+      ((op1_ID_w[5:2] == 4'b0011) && (rs_used)) ||
+      ((op1_ID_w[5:3] == 3'b010) && (rs_used)) ||
+      ((op1_ID_w[5:3] == 3'b100) && (rs_used))) && (stall_from_MEM || stall_from_EX || stall_from_ID);
+
+  // wire rs_wait_for_EX = (wregno_ID == rs_ID_w) && wr_reg_EX_w && ()
+  // wire rs_wait_for_MEM
+  // wire rs_wait_for_WB
+  // wire rt_wait_for_EX = (wregno_ID == rt_ID_w)
+  // wire rt_wait_for_MEM
+  // wire rt_wait_for_WB
+
 
   assign wregno_ID_w = (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
@@ -345,6 +358,7 @@ module Project(
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
+  assign wr_reg_EX_w = ctrlsig_ID[0];
 
   assign ctrlsig_EX_w = { ctrlsig_ID[2], ctrlsig_ID[1], ctrlsig_ID[0] };
   
@@ -393,7 +407,7 @@ module Project(
 
   reg [INSTBITS-1:0] inst_MEM; /* This is for debugging */
   reg [DBITS-1:0] regval_MEM;  
-  reg ctrlsig_MEM;
+  // reg ctrlsig_MEM;
   // D-MEM
   (* ram_init_file = IMEMINITFILE *)
   reg [DBITS-1:0] dmem[DMEMWORDS-1:0];
