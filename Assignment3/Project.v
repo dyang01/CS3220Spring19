@@ -97,9 +97,6 @@ module Project(
   wire stall_pipe;
   wire mispred_EX_w;
   
-  wire swag = 2'b10 == 2'b00;
-  wire fuck = 2'b00 == 2'b00;
-  
   reg [DBITS-1:0] pcgood_EX;
   reg [DBITS-1:0] PC_FE;
   reg [INSTBITS-1:0] inst_FE;   //the actual instruction reg
@@ -107,6 +104,7 @@ module Project(
   (* ram_init_file = IMEMINITFILE *)
   reg [DBITS-1:0] imem [IMEMWORDS-1:0];
   reg mispred_EX;
+  reg stall_prev;
   
   // This statement is used to initialize the I-MEM
   // during simulation using Model-Sim
@@ -122,9 +120,9 @@ module Project(
     else if(mispred_EX)
       PC_FE <= pcgood_EX;   //pcgood set to place that branch would go to
     else if(!stall_pipe)
-      PC_FE <= pcpred_FE; //SAME AS pcplus_FE because there is no branch prediction
+      PC_FE <= pcpred_FE; //for normal execution
     else
-      PC_FE <= PC_FE;
+      PC_FE <= PC_FE;	//for bubbles
   end
 
   // This is the value of "incremented PC", computed in the FE stage
@@ -137,9 +135,13 @@ module Project(
     if(reset)
       inst_FE <= {INSTBITS{1'b0}};
     else
-      //DONE: Specify inst_FE considering misprediction and stall
-      inst_FE <= inst_FE_w; //idk
-      
+	    //DONE: Specify inst_FE considering misprediction and stall
+	    if (mispred_EX)
+	    	inst_FE <= {INSTBITS{1'b0}};
+	    else if (stall_pipe)
+	    	inst_FE <= inst_FE;
+	    else
+	    	inst_FE <= inst_FE_w; //idk
   end
 
 
@@ -179,6 +181,11 @@ module Project(
   reg [REGNOBITS-1:0] wregno_MEM;
   reg [INSTBITS-1:0] inst_ID;
 
+  wire [3:0] fuck = 4'b0011;
+  wire [3:0] swag = 4'b0101;
+  wire [3:0] reee = ~(fuck | swag);
+  //wire aji = fuck ~| swag;
+
   // DONE: Specify signals such as op*_ID_w, imm_ID_w, r*_ID_w
   assign op1_ID_w = inst_FE[31:26];
   assign op2_ID_w = inst_FE[25:18];
@@ -207,14 +214,19 @@ module Project(
   
   // TODO: Specify stall condition
   // assign stall_pipe = ... ;
-  //if (EXT and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
-  wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w)) && (rs_ID_w != 0); 
-  wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w)) && (rt_ID_w != 0);
-  assign stall_pipe = ((op1_ID[5:3] == 3'b000) && (rs_used || rt_used)) ||
-      ((op1_ID[5:3] == 3'b001) && (rs_used)) ||
+  //if (EXT and wregno == rs or rt) or (BR and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
+  wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w) || (wregno_ID == rs_ID_w)) && (rs_ID_w != 0); 
+  wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w) || (wregno_ID == rt_ID_w)) && (rt_ID_w != 0);
+  wire stall_from_MEM = ((wregno_MEM == rs_ID_w) || (wregno_MEM == rt_ID_w)) && (wregno_MEM != 0);
+	wire stall_from_EX = ((wregno_EX == rs_ID_w) || (wregno_EX == rt_ID_w)) && (wregno_EX != 0);
+	wire stall_from_ID = ((wregno_ID == rs_ID_w) || (wregno_ID == rt_ID_w)) && (wregno_ID != 0);
+  assign stall_pipe = (((op1_ID[5:3] == 3'b000) && (rs_used || rt_used)) ||
+  		((op1_ID[5:2] == 4'b0010) && (rs_used || rt_used)) ||
+      ((op1_ID[5:2] == 4'b0011) && (rs_used)) ||
       ((op1_ID[5:3] == 3'b010) && (rs_used)) ||
-      ((op1_ID[5:3] == 3'b100) && (rs_used));
-  assign wregno_ID_w = (op1_ID[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
+      ((op1_ID[5:3] == 3'b100) && (rs_used))) && (stall_from_MEM || stall_from_EX || stall_from_ID);
+
+  assign wregno_ID_w = (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
   // ID_latch
   always @ (posedge clk or posedge reset) begin
@@ -228,6 +240,29 @@ module Project(
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
       immval_ID <= {DBITS{1'b0}}; //added
+      stall_prev <= 0; //added
+    end else if(mispred_EX) begin
+    	PC_ID  <= {DBITS{1'b0}};
+      inst_ID  <= {INSTBITS{1'b0}};
+      op1_ID   <= {OP1BITS{1'b0}};
+      op2_ID   <= {OP2BITS{1'b0}};
+      regval1_ID  <= {DBITS{1'b0}};
+      regval2_ID  <= {DBITS{1'b0}};
+      wregno_ID  <= {REGNOBITS{1'b0}};
+      ctrlsig_ID <= 5'h0;
+      immval_ID <= {DBITS{1'b0}}; //added
+      stall_prev <= 1;
+    end else if(stall_pipe) begin
+    	PC_ID  <= {DBITS{1'b0}};
+      inst_ID  <= {INSTBITS{1'b0}};
+      op1_ID   <= {OP1BITS{1'b0}};
+      op2_ID   <= {OP2BITS{1'b0}};
+      regval1_ID  <= {DBITS{1'b0}};
+      regval2_ID  <= {DBITS{1'b0}};
+      wregno_ID  <= {REGNOBITS{1'b0}};
+      ctrlsig_ID <= 5'h0;
+      immval_ID <= {DBITS{1'b0}}; //added
+      stall_prev <= 1;
     end else begin
       PC_ID  <= PC_FE;
     // DONE: Specify ID latches
@@ -239,6 +274,7 @@ module Project(
       wregno_ID  <= wregno_ID_w;
       ctrlsig_ID <= ctrlsig_ID_w;
       immval_ID <= sxt_imm_ID_w;
+      stall_prev <=0;
     end
   end
 
@@ -266,11 +302,11 @@ module Project(
 
   always @ (op1_ID or regval1_ID or regval2_ID) begin
     case (op1_ID)
-      OP1_BEQ : br_cond_EX = (regval1_ID == regval2_ID);
-      OP1_BLT : br_cond_EX = (regval1_ID < regval2_ID);
-      OP1_BLE : br_cond_EX = (regval1_ID <= regval2_ID);
-      OP1_BNE : br_cond_EX = (regval1_ID != regval2_ID);
-      default : br_cond_EX = 1'b0;
+      OP1_BEQ : br_cond_EX <= (regval1_ID == regval2_ID);
+      OP1_BLT : br_cond_EX <= (regval1_ID < regval2_ID);
+      OP1_BLE : br_cond_EX <= (regval1_ID <= regval2_ID);
+      OP1_BNE : br_cond_EX <= (regval1_ID != regval2_ID);
+      default : br_cond_EX <= 1'b0;
     endcase
   end
 
@@ -286,9 +322,9 @@ module Project(
         OP2_OR    : aluout_EX_r = regval1_ID | regval2_ID;
         OP2_XOR   : aluout_EX_r = regval1_ID ^ regval2_ID;
         OP2_SUB   : aluout_EX_r = regval1_ID - regval2_ID;
-        OP2_NAND  : aluout_EX_r = !(regval1_ID & regval2_ID);
-        OP2_NOR   : aluout_EX_r = !(regval1_ID | regval2_ID);
-        OP2_NXOR  : aluout_EX_r = !(regval1_ID ^ regval2_ID);
+        OP2_NAND  : aluout_EX_r = ~(regval1_ID & regval2_ID);
+        OP2_NOR   : aluout_EX_r = ~(regval1_ID | regval2_ID);
+        OP2_NXOR  : aluout_EX_r = ~(regval1_ID ^ regval2_ID);
         OP2_RSHF  : aluout_EX_r = regval1_ID >>> regval2_ID;
         OP2_LSHF  : aluout_EX_r = regval1_ID << regval2_ID;
         default   : aluout_EX_r = {DBITS{1'b0}};
@@ -312,11 +348,19 @@ module Project(
   
   // TODO: Specify signals such as mispred_EX_w, pcgood_EX_w
   assign mispred_EX_w = is_jmp_EX_w || (is_br_EX_w && br_cond_EX);
-  assign pcgood_EX_w = (op1_ID_w == OP1_JAL) ? (regval1_ID_w + 4*sxt_imm_ID_w) : (PC_ID + INSTSIZE + 4*sxt_imm_ID_w);
+  assign pcgood_EX_w = (op1_ID == OP1_JAL) ? (regval1_ID + 4*immval_ID) : (PC_ID + 4*immval_ID);
 
   // EX_latch
   always @ (posedge clk or posedge reset) begin
     if(reset) begin
+      inst_EX  <= {INSTBITS{1'b0}};
+      aluout_EX  <= {DBITS{1'b0}};
+      wregno_EX  <= {REGNOBITS{1'b0}};
+      ctrlsig_EX <= 3'h0;
+      mispred_EX <= 1'b0;
+      pcgood_EX  <= {DBITS{1'b0}};
+      regval2_EX  <= {DBITS{1'b0}};
+    end else if(mispred_EX) begin
       inst_EX  <= {INSTBITS{1'b0}};
       aluout_EX  <= {DBITS{1'b0}};
       wregno_EX  <= {REGNOBITS{1'b0}};
