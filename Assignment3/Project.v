@@ -210,7 +210,7 @@ module Project(
   
   // TODO: Specify stall condition
   // assign stall_pipe = ... ;
-  //if (EXT and wregno == rs or rt) or (BR and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs)
+  //if (EXT and wregno == rs or rt) or (BR and wregno == rs or rt) or (JAL and wregno == rs) or (LW and wregno == rs) or (alui and regno == rs) or (SW and wregno == rs or rt)
   wire rs_used = ((wregno_MEM == rs_ID_w) || (wregno_EX == rs_ID_w) || (wregno_ID == rs_ID_w)) && (rs_ID_w != 0); 
   wire rt_used = ((wregno_MEM == rt_ID_w) || (wregno_EX == rt_ID_w) || (wregno_ID == rt_ID_w)) && (rt_ID_w != 0);
          //  wire rs_read_ID = op1_ID_w != 6'b000000;
@@ -219,6 +219,7 @@ module Project(
         	// wire stall_from_EX = ((rs_read_ID && (wregno_EX == rs_ID_w)) || (rt_read_ID && (wregno_EX == rt_ID_w))) && (wregno_EX != 0) && wr_reg_MEM_w;
         	// wire stall_from_ID = ((rs_read_ID && (wregno_ID == rs_ID_w)) || (rt_read_ID && (wregno_ID == rt_ID_w))) && (wregno_ID != 0) && wr_reg_EX_w;
           
+
           wire stall_from_MEM = ((wregno_MEM == rs_ID_w) || (wregno_MEM == rt_ID_w)) && (wregno_MEM != 0);
           wire stall_from_EX = ((wregno_EX == rs_ID_w) || (wregno_EX == rt_ID_w)) && (wregno_EX != 0);
           wire stall_from_ID = ((wregno_ID == rs_ID_w) || (wregno_ID == rt_ID_w)) && (wregno_ID != 0);
@@ -230,6 +231,7 @@ module Project(
       ((op1_ID_w[5:2] == 4'b0011) && (rs_used)) ||
       ((op1_ID_w[5:3] == 3'b010) && (rs_used)) ||
       ((op1_ID_w[5:3] == 3'b100) && (rs_used))) && (stall_from_MEM || stall_from_EX || stall_from_ID);
+
 
   // wire rs_wait_for_EX = (wregno_ID == rs_ID_w) && wr_reg_EX_w && ()
   // wire rs_wait_for_MEM
