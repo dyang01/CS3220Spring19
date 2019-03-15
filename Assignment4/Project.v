@@ -25,8 +25,8 @@ module Project(
   parameter ADDRSW   = 32'hFFFFF090;
 
   // Change this to fmedian2.mif before submitting
+  // parameter IMEMINITFILE = "Test.mif";
   parameter IMEMINITFILE = "fmedian2.mif";
-  // parameter IMEMINITFILE = "fmedian2.mif";
   
   parameter IMEMADDRBITS = 16;
   parameter IMEMWORDBITS = 2;
@@ -108,6 +108,7 @@ module Project(
   // This statement is used to initialize the I-MEM
   // during simulation using Model-Sim
   initial begin
+   // $readmemh("Test.hex", imem);
    $readmemh("fmedian2.hex", imem);
   end
     
@@ -164,6 +165,7 @@ module Project(
   wire [REGNOBITS-1:0] wregno_ID_w;
   wire wr_reg_EX_w;
   wire wr_reg_MEM_w;
+  wire wr_mem_EX_w; // added
   
   // Register file
   reg [DBITS-1:0] PC_ID;
@@ -250,8 +252,35 @@ module Project(
   	(rd_write_id_regno == rs_ID_w || (rd_write_id_regno == rt_ID_w && (ext_inst || br_inst || sw_inst)))) &&
   	rt_write_id_regno != 0 && rd_write_id_regno != 0;
 
+  wire wr_reg_WB_w;
+  reg [DBITS-1:0] regval_MEM;
+  wire rd_mem_MEM_w;
+  wire [DBITS-1:0] rd_val_MEM_w;
+  reg [DBITS-1:0] aluout_EX;
+  reg signed [DBITS-1:0] aluout_EX_r;
+  wire wr_mem_MEM_w;
+  wire rd_mem_EX_w;
 
-  assign stall_pipe = stall_from_MEM2 || stall_from_EX2 || stall_from_ID2;
+  wire can_fwd_rs_MEM = (rs_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
+  wire can_fwd_rt_MEM = (rt_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
+
+  wire can_fwd_rs_EX = (rs_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
+  wire can_fwd_rt_EX = (rt_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
+
+  wire can_fwd_rs_ID = (rs_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
+  wire can_fwd_rt_ID = (rt_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
+
+  wire [DBITS-1:0] fwd_regval1_w = can_fwd_rs_ID ? aluout_EX_r : (can_fwd_rs_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rs_MEM ? regval_MEM : 0));
+  wire [DBITS-1:0] fwd_regval2_w = can_fwd_rt_ID ? aluout_EX_r : (can_fwd_rt_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rt_MEM ? regval_MEM : 0));
+
+  wire take_fwd_regval1_w = can_fwd_rs_MEM || can_fwd_rs_EX || can_fwd_rs_ID;
+  wire take_fwd_regval2_w = can_fwd_rt_MEM || can_fwd_rt_EX || can_fwd_rt_ID;
+
+  wire ignore_stall_MEM = can_fwd_rs_MEM || can_fwd_rt_MEM;
+  wire ignore_stall_EX = can_fwd_rs_EX || can_fwd_rt_EX;
+  wire ignore_stall_ID = can_fwd_rs_ID || can_fwd_rt_ID;
+
+  assign stall_pipe = (stall_from_MEM2 && !ignore_stall_MEM) || (stall_from_EX2 && !ignore_stall_EX) || (stall_from_ID2 && !ignore_stall_ID);
   assign wregno_ID_w = (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
 
   // ID_latch
@@ -292,8 +321,10 @@ module Project(
       inst_ID <= inst_FE; //idk about this one
       op1_ID   <= op1_ID_w;
       op2_ID   <= op2_ID_w;
-      regval1_ID  <= regval1_ID_w;
-      regval2_ID  <= regval2_ID_w;
+      regval1_ID  <= take_fwd_regval1_w ? fwd_regval1_w : regval1_ID_w;
+      regval2_ID  <= take_fwd_regval2_w ? fwd_regval2_w : regval2_ID_w;
+      // regval1_ID <= regval1_ID_w;
+      // regval2_ID <= regval2_ID_w;
       wregno_ID  <= wregno_ID_w;
       ctrlsig_ID <= ctrlsig_ID_w;
       immval_ID <= sxt_imm_ID_w;
@@ -309,8 +340,8 @@ module Project(
 
   wire is_br_EX_w;
   wire is_jmp_EX_w;
-  wire rd_mem_EX_w; //added wire
-  wire wr_mem_EX_w; //added wire
+  // wire rd_mem_EX_w; //added wire
+  // wire wr_mem_EX_w; //added wire
   wire [DBITS-1:0] pcgood_EX_w;
   wire [2:0] ctrlsig_EX_w;  //added wire
 
@@ -318,8 +349,8 @@ module Project(
   reg br_cond_EX;
   reg [2:0] ctrlsig_EX;
   // Note that aluout_EX_r is declared as reg, but it is output signal from combi logic
-  reg signed [DBITS-1:0] aluout_EX_r;
-  reg [DBITS-1:0] aluout_EX;
+  // reg signed [DBITS-1:0] aluout_EX_r;
+  // reg [DBITS-1:0] aluout_EX;
   reg [DBITS-1:0] regval2_EX;
 
   always @ (op1_ID or regval1_ID or regval2_ID) begin
@@ -367,6 +398,8 @@ module Project(
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
+  assign rd_mem_EX_w = ctrlsig_ID[2];
+  assign wr_mem_EX_w = ctrlsig_ID[1];
   assign wr_reg_EX_w = ctrlsig_ID[0];
 
   assign ctrlsig_EX_w = { ctrlsig_ID[2], ctrlsig_ID[1], ctrlsig_ID[0] };
@@ -408,14 +441,14 @@ module Project(
 
   //*** MEM STAGE ***//
 
-  wire rd_mem_MEM_w;
-  wire wr_mem_MEM_w;
+  // wire rd_mem_MEM_w;
+  // wire wr_mem_MEM_w;
   
   wire [DBITS-1:0] memaddr_MEM_w;
-  wire [DBITS-1:0] rd_val_MEM_w;
+  // wire [DBITS-1:0] rd_val_MEM_w;
 
   // reg [INSTBITS-1:0] inst_MEM; /* This is for debugging */
-  reg [DBITS-1:0] regval_MEM;  
+  // reg [DBITS-1:0] regval_MEM;  
   // reg ctrlsig_MEM;
   // D-MEM
   (* ram_init_file = IMEMINITFILE *)
@@ -452,7 +485,7 @@ module Project(
 
   /*** WRITE BACK STAGE ***/ 
 
-  wire wr_reg_WB_w;
+  // wire wr_reg_WB_w;
   // regs is already declared in the ID stage
 
   assign wr_reg_WB_w = ctrlsig_MEM;
