@@ -236,6 +236,20 @@ def assemble(source, depth=16384, width=32, address_radix='HEX', data_radix='HEX
 
                 bin32 = opcode + '00' + imm + rs + rt # bin32
 
+            if t[0] in SYS_TYPE:
+
+            	if t[0] == 'reti':
+
+            		bin32 = opcode + '0000000000000000' # bin32
+
+            	else:
+
+            		rd = special_regs[t[1].lower()]
+
+            		rs = special_regs[t[2].lower()]
+
+            		bin32 = opcode + rd + rs + '0000000000' # bin32
+
             hex8 = hex(int(bin32,2))[2:].zfill(8) # hex8
 
 
@@ -328,13 +342,28 @@ regs = {
 
     'sp'    :   '1110', # r14
 
-    'ra'    :   '1111'  # r15
+    'ra'    :   '1111', # r15
+
+    'ssp'	:	'1011', # r11
+
+}
+
+special_regs = {
+	
+	'pcs'	:	'00', # Process control and status
+
+	'iha'	:	'01', # Interrupt handler address
+
+	'ira'	:	'10', # Interrupt return address
+
+	'idn'	:	'11', # Interrupt device ID
 
 }
 
 
 
 EXT = '000000'
+SYS = '111111'
 
 opcodes = {
 
@@ -388,6 +417,12 @@ opcodes = {
 
     'sw'    :   '011010',
 
+    'reti'	:	SYS + '00000001',
+
+    'rsr'	:	SYS + '00000010',
+
+    'wrs'	:	SYS + '00000011',
+
 }
 
 
@@ -403,6 +438,8 @@ IMM_TYPE_BR     = ('beq','blt','ble','bne')
 IMM_TYPE_JAL    = ('jal',)
 
 IMM_TYPE_MEM    = ('lw','sw')
+
+SYS_TYPE		= ('reti','rsr','wrs')
 
 
 
