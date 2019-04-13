@@ -1,0 +1,17 @@
+This is the syntax/formatting we should use.
+
+--------------------------------------------
+REGISTERS
+--------------------------------------------
+For PCS register (process control/status):
+	bit 0 = interrupt enable/disable. 0 = disable, 1 = enable
+	bit 1 = old interrupt enable/disable.
+	the rest of the bits I think are irrelevant, couldnt find anything in the
+		lecture slides. if we need more control bits we can decide later.
+
+		
+		
+
+--------------------------------------------
+INSTRUCTIONS
+--------------------------------------------
