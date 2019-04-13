@@ -3,14 +3,22 @@ This is the syntax/formatting we should use.
 --------------------------------------------
 REGISTERS
 --------------------------------------------
-PCS register (process control/status):
+PCS (process control/status):
 	bit 0 = interrupt enable/disable. 0 = disable, 1 = enable
 	bit 1 = old interrupt enable/disable.
 	the rest of the bits I think are irrelevant, couldnt find anything in the
 		lecture slides. if we need more control bits we can decide later.
 
-		
-		
+IHA (interrupt handler address):
+	Done in xmax.asm.
+
+IRA (interrupt return address):
+	Done in xmax.asm.
+
+IDN (interrupt device ID number):
+	Buttons:	00_0000	00_0001	... 00_0011
+	Switch:		01_0000 01_0001 ... 01_1001
+	Timer:		10_0000
 
 --------------------------------------------
 INSTRUCTIONS
