@@ -3,7 +3,7 @@ This is the syntax/formatting we should use.
 --------------------------------------------
 REGISTERS
 --------------------------------------------
-For PCS register (process control/status):
+PCS register (process control/status):
 	bit 0 = interrupt enable/disable. 0 = disable, 1 = enable
 	bit 1 = old interrupt enable/disable.
 	the rest of the bits I think are irrelevant, couldnt find anything in the
@@ -15,3 +15,6 @@ For PCS register (process control/status):
 --------------------------------------------
 INSTRUCTIONS
 --------------------------------------------
+RETI		:	{opcode,   ,   ,   }		[	OP= "111111 0000_0001"	___	___	___		]
+RSR			:	{opcode,   , Rs, Rt}		[	OP= "111111 0000_0010"	0	Rs	Rt		]
+RSR			:	{opcode,   , Rs, Rt}		[	OP= "111111 0000_0011"	0	Rs	Rt		]
