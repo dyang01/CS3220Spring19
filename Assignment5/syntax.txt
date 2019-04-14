@@ -16,13 +16,19 @@ IRA (interrupt return address):
 	Done in xmax.asm.
 
 IDN (interrupt device ID number):
-	Buttons:	00_0000	00_0001	... 00_0011
-	Switch:		01_0000 01_0001 ... 01_1001
-	Timer:		10_0000
+	Timer:		00
+	Key:	01
+	Switch:		10
+	
 
 --------------------------------------------
 INSTRUCTIONS
 --------------------------------------------
-RETI		:	{opcode,   ,   ,   }		[	OP= "111111 0000_0001"	___	___	___		]
-RSR			:	{opcode,   , Rs, Rt}		[	OP= "111111 0000_0010"	0	Rs	Rt		]
-RSR			:	{opcode,   , Rs, Rt}		[	OP= "111111 0000_0011"	0	Rs	Rt		]
+RETI: 	[PC = IRA, PCS[0] = PCS[1], PCS[1] = ???]	
+	RETI	:	{opcode,   ,   ,   }	[	OP= "111111 0000_0001"	___	___	___	]
+
+RSR: 	[Rt = Rs]	[Rt = Ss] Ss = system source
+	RSR		:	{opcode,   , Rs, Rt}	[	OP= "111111 0000_0010"	0	Rs	Rt	]
+
+WSR: 	[Rt = Rs]	[Sd = Rs] Sd = system destination
+	WSR		:	{opcode,   , Rs, Rt}	[	OP= "111111 0000_0011"	0	Rs	Rt	]
