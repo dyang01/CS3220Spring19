@@ -17,7 +17,7 @@ IRA (interrupt return address):
 
 IDN (interrupt device ID number):
 	Timer:		00
-	Key:	01
+	Key:		01
 	Switch:		10
 	
 

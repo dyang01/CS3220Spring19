@@ -90,7 +90,7 @@ module Project(
 
   assign reset = !locked;
 
-  wire intr_w;
+  wire intr_key, intr_sw, intr_timer;
 
   //*** FETCH STAGE ***//
   // The PC register and update logic
@@ -543,8 +543,6 @@ module Project(
   wire [31:0] regval2_MEM_w;
   assign regval2_MEM_w = regval2_EX;
 
-  reg [KEYBITS-1:0] KEYCTRL;
-  wire [KEYBITS-1:0] KEYCTRL_w;
 
   // always @ (posedge clk or posedge reset) begin
   //   if (reset)
@@ -555,13 +553,12 @@ module Project(
   // end
 
   // KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
-  KEY_DEVICE #(.BITS(32), .BASE(32'hFFFFF084), .CTRL_BITS(5)) KEY_d(
+  KEY_DEVICE #(.BITS(DBITS), .BASE(32'hFFFFF080)) KEY_d(
     .ABUS(memaddr_MEM_w),
     .DBUS(regval2_MEM_w),
     .WE(wr_mem_MEM_w),
-    .INTR(intr_w),
+    .INTR(intr_key),
     .CLK(clk),.LOCK(locked),.INIT(),
-    .CTRL(KEYCTRL_w),
     .DEBUG()
   );
 
@@ -578,29 +575,46 @@ module SXT(IN, OUT);
   assign OUT = {{(OBITS-IBITS){IN[IBITS-1]}}, IN};
 endmodule
 
-module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, CTRL, DEBUG);
+module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
   parameter BITS;
   parameter BASE;
-  parameter CTRL_BITS;
 
   input wire [BITS-1:0] ABUS;
   inout wire [BITS-1:0] DBUS;
   input wire WE,CLK,LOCK,INIT;
-  inout wire [CTRL_BITS-1:0] CTRL;
   output wire DEBUG;
   output wire INTR;
 
-  wire sel_rdy = ABUS == BASE;
-  wire wr_rdy = (WE && sel_rdy) && 0; // Writes are ignored
-  wire rd_rdy = !WE && sel_rdy;
+  reg [DBITS-1:0] KDATA, KDATA_old, KCTRL, temp;
 
-  wire sel_over = ABUS == (BASE + 32'd1);
-  wire wr_over = WE && sel_over;
-  wire rd_over = !WE && sel_over;
+  wire sel_data = ABUS == BASE;
+  wire wr_data = 0;
+  wire rd_data = !WE && sel_data;
 
-  wire sel_ien = ABUS == (BASE + 32'd4);
-  wire wr_ien = WE && sel_ien;
-  wire rd_ien = !WE && sel_ien;
+  wire sel_ctrl = ABUS == (BASE + 32'd4);
+  wire wr_ctrl = WE && sel_ctrl;
+  wire rd_ctrl = !WE && sel_ctrl;
+
+  //Writes
+  always @(posedge clk or posedge rst) begin
+  	if (rst) begin
+  		KCTRL <= 32'b0;
+  		KDATA_old <= 32'b0;
+  		KDATA <= 32'b0;
+  		temp <= 32'b0;
+  	end
+  	else if () begin 	//Somehow detect when key is pressed
+  		KDATA = ; // something
+  	end
+  	else if (KDATA_old != KDATA) begin //if change in KDATA detected
+  		KCTRL[0] <= 1;
+  	end
+  end
+
+	//Reads
+  assign DBUS = rd_data ? KDATA :
+  							rd_ctrl ? KCTRL :
+  							{BITS{1'bz}};	
 
   assign INTR = sel_rdy;
 
@@ -608,6 +622,4 @@ module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, CTRL, DEBUG);
                 (rd_over ? CTRL[1] :
                 (rd_ien ? CTRL[4] : {BITS{1'bz}}));
 
-  assign CTRL[1] = (wr_over && (!DBUS[0])) ? DBUS[0] : 1'bz;
-  assign CTRL[4] = wr_ien ? DBUS[0] : 1'bz;
 endmodule
