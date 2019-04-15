@@ -1,4 +1,11 @@
-This is the syntax/formatting we should use.
+--------------------------------------------
+TO DO
+--------------------------------------------
+Change assembler to support new instructions and registers
+Add device modules for KEY, SW, LEDR, HEX, and TIMER
+Write and add interrupt handlers
+Build the Interrupt Controller
+	Write xmax.asm
 
 --------------------------------------------
 REGISTERS
@@ -32,3 +39,5 @@ RSR: 	[Rt = Rs]	[Rt = Ss] Ss = system source
 
 WSR: 	[Rt = Rs]	[Sd = Rs] Sd = system destination
 	WSR		:	{opcode,   , Rs, Rt}	[	OP= "111111 0000_0011"	0	Rs	Rt	]
+
+

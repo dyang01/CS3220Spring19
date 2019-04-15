@@ -585,13 +585,12 @@ module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
   output wire DEBUG;
   output wire INTR;
 
-  reg [DBITS-1:0] KDATA, KDATA_old, KCTRL, temp;
+  reg [DBITS-1:0] KDATA, KCTRL;
 
-  wire sel_data = ABUS == BASE;
-  wire wr_data = 0;
+  wire sel_data = ABUS == BASE;             //address of KDATA
   wire rd_data = !WE && sel_data;
 
-  wire sel_ctrl = ABUS == (BASE + 32'd4);
+  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of KCTRL (control/status)
   wire wr_ctrl = WE && sel_ctrl;
   wire rd_ctrl = !WE && sel_ctrl;
 
@@ -599,17 +598,20 @@ module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
   always @(posedge clk or posedge rst) begin
   	if (rst) begin
   		KCTRL <= 32'b0;
-  		KDATA_old <= 32'b0;
   		KDATA <= 32'b0;
-  		temp <= 32'b0;
+    end
+  	else if (KDATA != KEY) begin   //if change in KDATA detected
+  		if (KCTRL[0])
+        KCTRL[1] <= 1;             //overrun bit set
+      KCTRL[0] <= 1;               //ready bit set
   	end
-  	else if () begin 	//Somehow detect when key is pressed
-  		KDATA = ; // something
-  	end
-  	else if (KDATA_old != KDATA) begin //if change in KDATA detected
-  		KCTRL[0] <= 1;
-  	end
+  	else if (rd_data)              //if reading KDATA
+  		KCTRL[0] <= 0;
+    else if (sel_ctrl)
+      KCTRL <= {DBUS[4:2], (DBUS[1] & KCTRL[1])};
+    KDATA <= KEY;                  //sets KDATA.
   end
+
 
 	//Reads
   assign DBUS = rd_data ? KDATA :
