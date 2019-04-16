@@ -3,13 +3,13 @@ module Project(
   input        RESET_N,
   input  [3:0] KEY,
   input  [9:0] SW,
-  output [6:0] HEX0,
-  output [6:0] HEX1,
-  output [6:0] HEX2,
-  output [6:0] HEX3,
-  output [6:0] HEX4,
-  output [6:0] HEX5,
-  output [9:0] LEDR
+  inout [6:0] HEX0,
+  inout [6:0] HEX1,
+  inout [6:0] HEX2,
+  inout [6:0] HEX3,
+  inout [6:0] HEX4,
+  inout [6:0] HEX5,
+  inout [9:0] LEDR
 );
 
   parameter DBITS    = 32;
@@ -541,7 +541,7 @@ module Project(
 
   assign LEDR = LEDR_out;
   wire [31:0] regval2_MEM_w;
-  assign regval2_MEM_w = regval2_EX;
+  assign regval2_MEM_w = (wr_mem_MEM_w) ? regval2_EX : {DBITS{1'bz}};
 
 
   // always @ (posedge clk or posedge reset) begin
@@ -552,15 +552,40 @@ module Project(
   //   end
   // end
 
-  // KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
-  KEY_DEVICE #(.BITS(DBITS), .BASE(32'hFFFFF080)) KEY_d(
+  // KEY_DEVICE(KEY, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  KEY_DEVICE #(.BITS(DBITS), .BASE(ADDRKEY)) KEY_d(
+    .KEY(KEY),
     .ABUS(memaddr_MEM_w),
     .DBUS(regval2_MEM_w),
     .WE(wr_mem_MEM_w),
     .INTR(intr_key),
-    .CLK(clk),.LOCK(locked),.INIT(),
+    .CLK(clk),.RESET(reset),.INIT(),
     .DEBUG()
   );
+
+  SW_DEVICE #(.BITS(DBITS), .BASE(ADDRSW)) SW_d(
+    .SW(SW),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_key),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+
+  /*
+  LED_DEVICE #(.BITS(DBITS), .BASE(ADDRLEDR)) LED_d(
+    .LEDR(LEDR),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_key),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+  */
+
+
 
 
 endmodule
@@ -575,17 +600,19 @@ module SXT(IN, OUT);
   assign OUT = {{(OBITS-IBITS){IN[IBITS-1]}}, IN};
 endmodule
 
-module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
+module KEY_DEVICE(KEY, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
   parameter BITS;
   parameter BASE;
 
+  input wire [3:0] KEY;
   input wire [BITS-1:0] ABUS;
   inout wire [BITS-1:0] DBUS;
-  input wire WE,CLK,LOCK,INIT;
+  input wire WE,CLK,RESET,INIT;
   output wire DEBUG;
   output wire INTR;
 
-  reg [DBITS-1:0] KDATA, KCTRL;
+  reg [BITS-1:0] KDATA;
+  reg [BITS-1:0] KCTRL;
 
   wire sel_data = ABUS == BASE;             //address of KDATA
   wire rd_data = !WE && sel_data;
@@ -595,8 +622,8 @@ module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
   wire rd_ctrl = !WE && sel_ctrl;
 
   //Writes
-  always @(posedge clk or posedge rst) begin
-  	if (rst) begin
+  always @(posedge CLK or posedge RESET) begin
+  	if (RESET) begin
   		KCTRL <= 32'b0;
   		KDATA <= 32'b0;
     end
@@ -607,21 +634,105 @@ module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
   	end
   	else if (rd_data)              //if reading KDATA
   		KCTRL[0] <= 0;
-    else if (sel_ctrl)
+    else if (wr_ctrl)
       KCTRL <= {DBUS[4:2], (DBUS[1] & KCTRL[1])};
     KDATA <= KEY;                  //sets KDATA.
   end
-
 
 	//Reads
   assign DBUS = rd_data ? KDATA :
   							rd_ctrl ? KCTRL :
   							{BITS{1'bz}};	
 
-  assign INTR = sel_rdy;
+  assign INTR = KCTRL[0];
+endmodule
 
-  assign DBUS = rd_rdy ? CTRL[0] :
-                (rd_over ? CTRL[1] :
-                (rd_ien ? CTRL[4] : {BITS{1'bz}}));
+module SW_DEVICE(SW, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [3:0] SW;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+  output wire INTR;
+
+  reg [BITS-1:0] SDATA;
+  reg [BITS-1:0] SCTRL;
+
+  wire sel_data = ABUS == BASE;             //address of SDATA
+  wire rd_data = !WE && sel_data;
+
+  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of SCTRL (control/status)
+  wire wr_ctrl = WE && sel_ctrl;
+  wire rd_ctrl = !WE && sel_ctrl;
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+    if (RESET) begin
+      SCTRL <= 32'b0;
+      SDATA <= 32'b0;
+    end
+    else if (SDATA != SW) begin   //if change in SDATA detected
+      if (SCTRL[0])
+        SCTRL[1] <= 1;             //overrun bit set
+      SCTRL[0] <= 1;               //ready bit set
+    end
+    else if (rd_data)              //if reading SDATA
+      SCTRL[0] <= 0;
+    else if (wr_ctrl)
+      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
+    SDATA <= SW;                  //sets SDATA.
+  end
+
+  //Reads
+  assign DBUS = rd_data ? SDATA :
+                rd_ctrl ? SCTRL :
+                {BITS{1'bz}}; 
+
+  assign INTR = SCTRL[0];
+endmodule
+
+/*
+module LED_DEVICE(LEDR, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [3:0] LEDR;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+  output wire INTR = 0;
+
+  wire sel_data = ABUS == BASE;             //address of LEDR
+  wire wr_data = WE && sel_data;
+  wire rd_data = !WE && sel_data;
+
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+    if (RESET) begin
+      SCTRL <= 32'b0;
+      SDATA <= 32'b0;
+    end
+    else if (SDATA != LEDR) begin   //if change in SDATA detected
+      if (SCTRL[0])
+        SCTRL[1] <= 1;             //overrun bit set
+      SCTRL[0] <= 1;               //ready bit set
+    end
+    else if (rd_data)              //if reading SDATA
+      SCTRL[0] <= 0;
+    else if (wr_ctrl)
+      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
+    SDATA <= LEDR;                  //sets SDATA.
+  end
+
+  //Reads
+  assign DBUS = rd_data ? SDATA :
+                rd_ctrl ? SCTRL :
+                {BITS{1'bz}}; 
 
 endmodule
+*/
