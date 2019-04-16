@@ -3,13 +3,13 @@ module Project(
   input        RESET_N,
   input  [3:0] KEY,
   input  [9:0] SW,
-  inout [6:0] HEX0,
-  inout [6:0] HEX1,
-  inout [6:0] HEX2,
-  inout [6:0] HEX3,
-  inout [6:0] HEX4,
-  inout [6:0] HEX5,
-  inout [9:0] LEDR
+  output [6:0] HEX0,
+  output [6:0] HEX1,
+  output [6:0] HEX2,
+  output [6:0] HEX3,
+  output [6:0] HEX4,
+  output [6:0] HEX5,
+  output [9:0] LEDR
 );
 
   parameter DBITS    = 32;
@@ -25,6 +25,7 @@ module Project(
   parameter ADDRSW   = 32'hFFFFF090;
   parameter ADDRKCTRL = 32'hFFFFF084;
   parameter ADDRSCTRL = 32'hFFFFF094;
+  parameter ADDRTIMER = 32'hFFFFF100;
 
   // Change this to fmedian2.mif before submitting
   parameter IMEMINITFILE = "fmedian2.mif";
@@ -512,35 +513,11 @@ module Project(
   
   /*** I/O ***/
   // Create and connect HEX register
-  reg [23:0] HEX_out;
   
-  SevenSeg ss5(.OUT(HEX5), .IN(HEX_out[23:20]), .OFF(1'b0));
-  SevenSeg ss4(.OUT(HEX4), .IN(HEX_out[19:16]), .OFF(1'b0));
-  SevenSeg ss3(.OUT(HEX3), .IN(HEX_out[15:12]), .OFF(1'b0));
-  SevenSeg ss2(.OUT(HEX2), .IN(HEX_out[11:8]), .OFF(1'b0));
-  SevenSeg ss1(.OUT(HEX1), .IN(HEX_out[7:4]), .OFF(1'b0));
-  SevenSeg ss0(.OUT(HEX0), .IN(HEX_out[3:0]), .OFF(1'b0));
+
   
-  always @ (posedge clk or posedge reset) begin
-    if(reset)
-      HEX_out <= 24'hFEDEAD;
-    else if(wr_mem_MEM_w && (memaddr_MEM_w == ADDRHEX))
-      HEX_out <= regval2_EX[HEXBITS-1:0];
-  end
-
-  // TODO: Write the code for LEDR here
-
-  reg [9:0] LEDR_out;
-  
-  always @ (posedge clk or posedge reset) begin
-    if(reset)
-      LEDR_out <= 10'b0000000000;
-    else if(wr_mem_MEM_w && (memaddr_MEM_w == ADDRLEDR))
-      LEDR_out <= regval2_EX[LEDRBITS-1:0];
-  end
-
-  assign LEDR = LEDR_out;
   wire [31:0] regval2_MEM_w;
+
   assign regval2_MEM_w = (wr_mem_MEM_w) ? regval2_EX : {DBITS{1'bz}};
 
 
@@ -568,25 +545,38 @@ module Project(
     .ABUS(memaddr_MEM_w),
     .DBUS(regval2_MEM_w),
     .WE(wr_mem_MEM_w),
-    .INTR(intr_key),
+    .INTR(intr_sw),
     .CLK(clk),.RESET(reset),.INIT(),
     .DEBUG()
   );
-
-  /*
+  
   LED_DEVICE #(.BITS(DBITS), .BASE(ADDRLEDR)) LED_d(
     .LEDR(LEDR),
     .ABUS(memaddr_MEM_w),
     .DBUS(regval2_MEM_w),
     .WE(wr_mem_MEM_w),
-    .INTR(intr_key),
     .CLK(clk),.RESET(reset),.INIT(),
     .DEBUG()
   );
-  */
 
+  HEX_DEVICE #(.BITS(DBITS), .BASE(ADDRHEX)) HEX_d(
+    .HEX({HEX5, HEX4, HEX3, HEX2, HEX1, HEX0}),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+  
 
-
+  TIMER_DEVICE #(.BITS(DBITS), .BASE(ADDRTIMER)) TIMER_d(
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_timer),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
 
 endmodule
 
@@ -694,45 +684,124 @@ module SW_DEVICE(SW, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
   assign INTR = SCTRL[0];
 endmodule
 
-/*
-module LED_DEVICE(LEDR, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+module TIMER_DEVICE(ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
   parameter BITS;
   parameter BASE;
 
-  input wire [3:0] LEDR;
   input wire [BITS-1:0] ABUS;
   inout wire [BITS-1:0] DBUS;
   input wire WE,CLK,RESET,INIT;
   output wire DEBUG;
-  output wire INTR = 0;
+  output wire INTR;
+
+  reg [BITS-1:0] TCNT, TLIM, TCTL, CLK_COUNT;
+  // reg [BITS-1:0] SCTRL;
+
+  wire sel_tcnt = ABUS == BASE;             //address of TCNT
+  wire wr_tcnt = WE && sel_tcnt;
+  wire rd_tcnt = !WE && sel_tcnt;
+
+  wire sel_tlim = ABUS == (BASE + 32'd4);   //address of TLIM
+  wire wr_tlim = WE && sel_tlim;
+  wire rd_tlim = !WE && sel_tlim;
+
+  wire sel_ctrl = ABUS == (BASE + 32'd8);   //address of TCTL (control/status)
+  wire wr_ctrl = WE && sel_ctrl;
+  wire rd_ctrl = !WE && sel_ctrl;
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+    if (RESET) begin
+      TCNT <= 32'b0;
+      TLIM <= 32'b0;
+      TCTL <= 32'b0;
+      CLK_COUNT <= 32'b0;
+    end else if (CLK_COUNT >= 90000) begin     //number of clocks in 1 ms
+      CLK_COUNT <= 0;
+      TCNT <= TCNT + 1;
+    end else if ((TCNT >= TLIM -1) && (TLIM != 0)) begin //if counter reached
+      TCNT <= 0;
+      if (TCTL[0])    //if ready == 1 already then overflow
+        TCTL[1] <= 1;
+      TCTL[0] <= 1;
+    end else if (wr_tcnt)   //if writing to tcnt
+      TCNT <= DBUS;
+    else if (wr_tlim)       //if writing to tlim
+      TLIM <= DBUS;
+    else if (wr_ctrl)       //if writing to tctl
+      TCTL <= {DBUS[4:2], (DBUS[1:0] && TCTL[1:0])};
+    else 
+    	CLK_COUNT <= CLK_COUNT + 1;
+  end
+
+  //Reads
+  assign DBUS = rd_tcnt ? TCNT :
+                rd_tlim ? TLIM :
+                rd_ctrl ? TCTL :
+                {BITS{1'bz}}; 
+
+  assign INTR = TCTL[0];
+endmodule
+
+module HEX_DEVICE(HEX, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [35:0] HEX;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+
+  reg [23:0] HEX_out;
+
+  wire sel_data = ABUS == BASE;             //address of HEX
+  wire wr_data = WE && sel_data;
+  wire rd_data = !WE && sel_data;
+
+  always @(posedge CLK or posedge RESET) begin
+  	if (RESET)
+  		HEX_out <= {24{1'b0}};
+  	else if (wr_data)
+  		HEX_out <= DBUS;
+	end
+
+	SevenSeg ss5(.OUT(HEX[35:30]), .IN(HEX_out[23:20]), .OFF(1'b0));
+  SevenSeg ss4(.OUT(HEX[29:24]), .IN(HEX_out[19:16]), .OFF(1'b0));
+  SevenSeg ss3(.OUT(HEX[23:18]), .IN(HEX_out[15:12]), .OFF(1'b0));
+  SevenSeg ss2(.OUT(HEX[17:12]), .IN(HEX_out[11:8]), .OFF(1'b0));
+  SevenSeg ss1(.OUT(HEX[11:6]), .IN(HEX_out[7:4]), .OFF(1'b0));
+  SevenSeg ss0(.OUT(HEX[5:0]), .IN(HEX_out[3:0]), .OFF(1'b0));
+
+  assign DBUS = (rd_data) ? HEX_out : {BITS{1'bz}};
+endmodule
+
+
+
+module LED_DEVICE(LEDR, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [9:0] LEDR;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+
+  reg [9:0] LED_register;
 
   wire sel_data = ABUS == BASE;             //address of LEDR
   wire wr_data = WE && sel_data;
   wire rd_data = !WE && sel_data;
 
-
-  //Writes
   always @(posedge CLK or posedge RESET) begin
-    if (RESET) begin
-      SCTRL <= 32'b0;
-      SDATA <= 32'b0;
-    end
-    else if (SDATA != LEDR) begin   //if change in SDATA detected
-      if (SCTRL[0])
-        SCTRL[1] <= 1;             //overrun bit set
-      SCTRL[0] <= 1;               //ready bit set
-    end
-    else if (rd_data)              //if reading SDATA
-      SCTRL[0] <= 0;
-    else if (wr_ctrl)
-      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
-    SDATA <= LEDR;                  //sets SDATA.
+  	if (RESET)
+  		LED_register <= {10{1'b0}};
+  	else if (wr_data)
+  		LED_register <= DBUS[9:0];
+  	else
+  		LED_register <= LEDR;
   end
 
-  //Reads
-  assign DBUS = rd_data ? SDATA :
-                rd_ctrl ? SCTRL :
-                {BITS{1'bz}}; 
-
+  assign DBUS = (rd_data) ? LED_register : {BITS{1'bz}};
 endmodule
-*/
