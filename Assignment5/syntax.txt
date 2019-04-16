@@ -1,0 +1,43 @@
+--------------------------------------------
+TO DO
+--------------------------------------------
+Change assembler to support new instructions and registers
+Add device modules for KEY, SW, LEDR, HEX, and TIMER
+Write and add interrupt handlers
+Build the Interrupt Controller
+	Write xmax.asm
+
+--------------------------------------------
+REGISTERS
+--------------------------------------------
+PCS (process control/status):
+	bit 0 = interrupt enable/disable. 0 = disable, 1 = enable
+	bit 1 = old interrupt enable/disable.
+	the rest of the bits I think are irrelevant, couldnt find anything in the
+		lecture slides. if we need more control bits we can decide later.
+
+IHA (interrupt handler address):
+	Done in xmax.asm.
+
+IRA (interrupt return address):
+	Done in xmax.asm.
+
+IDN (interrupt device ID number):
+	Timer:		00
+	Key:		01
+	Switch:		10
+	
+
+--------------------------------------------
+INSTRUCTIONS
+--------------------------------------------
+RETI: 	[PC = IRA, PCS[0] = PCS[1], PCS[1] = ???]	
+	RETI	:	{opcode,   ,   ,   }	[	OP= "111111 0000_0001"	___	___	___	]
+
+RSR: 	[Rt = Rs]	[Rt = Ss] Ss = system source
+	RSR		:	{opcode,   , Rs, Rt}	[	OP= "111111 0000_0010"	0	Rs	Rt	]
+
+WSR: 	[Rt = Rs]	[Sd = Rs] Sd = system destination
+	WSR		:	{opcode,   , Rs, Rt}	[	OP= "111111 0000_0011"	0	Rs	Rt	]
+
+

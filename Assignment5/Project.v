@@ -3,13 +3,13 @@ module Project(
   input        RESET_N,
   input  [3:0] KEY,
   input  [9:0] SW,
-  output [6:0] HEX0,
-  output [6:0] HEX1,
-  output [6:0] HEX2,
-  output [6:0] HEX3,
-  output [6:0] HEX4,
-  output [6:0] HEX5,
-  output [9:0] LEDR
+  inout [6:0] HEX0,
+  inout [6:0] HEX1,
+  inout [6:0] HEX2,
+  inout [6:0] HEX3,
+  inout [6:0] HEX4,
+  inout [6:0] HEX5,
+  inout [9:0] LEDR
 );
 
   parameter DBITS    = 32;
@@ -23,10 +23,12 @@ module Project(
   parameter ADDRLEDR = 32'hFFFFF020;
   parameter ADDRKEY  = 32'hFFFFF080;
   parameter ADDRSW   = 32'hFFFFF090;
+  parameter ADDRKCTRL = 32'hFFFFF084;
+  parameter ADDRSCTRL = 32'hFFFFF094;
 
   // Change this to fmedian2.mif before submitting
-  // parameter IMEMINITFILE = "Test.mif";
   parameter IMEMINITFILE = "fmedian2.mif";
+  // parameter IMEMINITFILE = "fmedian2.mif";
   
   parameter IMEMADDRBITS = 16;
   parameter IMEMWORDBITS = 2;
@@ -88,6 +90,7 @@ module Project(
 
   assign reset = !locked;
 
+  wire intr_key, intr_sw, intr_timer;
 
   //*** FETCH STAGE ***//
   // The PC register and update logic
@@ -108,7 +111,6 @@ module Project(
   // This statement is used to initialize the I-MEM
   // during simulation using Model-Sim
   initial begin
-   // $readmemh("Test.hex", imem);
    $readmemh("fmedian2.hex", imem);
   end
     
@@ -165,7 +167,6 @@ module Project(
   wire [REGNOBITS-1:0] wregno_ID_w;
   wire wr_reg_EX_w;
   wire wr_reg_MEM_w;
-  wire wr_mem_EX_w; // added
   
   // Register file
   reg [DBITS-1:0] PC_ID;
@@ -252,33 +253,13 @@ module Project(
   	(rd_write_id_regno == rs_ID_w || (rd_write_id_regno == rt_ID_w && (ext_inst || br_inst || sw_inst)))) &&
   	rt_write_id_regno != 0 && rd_write_id_regno != 0;
 
-  wire wr_reg_WB_w;
-  reg [DBITS-1:0] regval_MEM;
-  wire rd_mem_MEM_w;
-  wire [DBITS-1:0] rd_val_MEM_w;
-  reg [DBITS-1:0] aluout_EX;
-  reg signed [DBITS-1:0] aluout_EX_r;
-  wire wr_mem_MEM_w;
-  wire rd_mem_EX_w;
-
-  wire can_fwd_rs_MEM = (rs_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
-  wire can_fwd_rt_MEM = (rt_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
-
-  wire can_fwd_rs_EX = (rs_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
-  wire can_fwd_rt_EX = (rt_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
-
-  wire can_fwd_rs_ID = (rs_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
-  wire can_fwd_rt_ID = (rt_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
-
-  wire [DBITS-1:0] fwd_regval1_w = can_fwd_rs_ID ? aluout_EX_r : (can_fwd_rs_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rs_MEM ? regval_MEM : 0));
-  wire [DBITS-1:0] fwd_regval2_w = can_fwd_rt_ID ? aluout_EX_r : (can_fwd_rt_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rt_MEM ? regval_MEM : 0));
-
-  wire take_fwd_regval1_w = can_fwd_rs_MEM || can_fwd_rs_EX || can_fwd_rs_ID;
-  wire take_fwd_regval2_w = can_fwd_rt_MEM || can_fwd_rt_EX || can_fwd_rt_ID;
-
-  wire ignore_stall_MEM = can_fwd_rs_MEM || can_fwd_rt_MEM;
-  wire ignore_stall_EX = can_fwd_rs_EX || can_fwd_rt_EX;
-  wire ignore_stall_ID = can_fwd_rs_ID || can_fwd_rt_ID;
+  wire ignore_stall_MEM;
+  wire ignore_stall_EX;
+  wire ignore_stall_ID;
+  wire take_fwd_regval1_w;
+  wire take_fwd_regval2_w;
+  wire [DBITS-1:0] fwd_regval1_w;
+  wire [DBITS-1:0] fwd_regval2_w;
 
   assign stall_pipe = (stall_from_MEM2 && !ignore_stall_MEM) || (stall_from_EX2 && !ignore_stall_EX) || (stall_from_ID2 && !ignore_stall_ID);
   assign wregno_ID_w = (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
@@ -321,10 +302,8 @@ module Project(
       inst_ID <= inst_FE; //idk about this one
       op1_ID   <= op1_ID_w;
       op2_ID   <= op2_ID_w;
-      regval1_ID  <= take_fwd_regval1_w ? fwd_regval1_w : regval1_ID_w;
-      regval2_ID  <= take_fwd_regval2_w ? fwd_regval2_w : regval2_ID_w;
-      // regval1_ID <= regval1_ID_w;
-      // regval2_ID <= regval2_ID_w;
+      regval1_ID <= take_fwd_regval1_w ? fwd_regval1_w : regval1_ID_w;
+      regval2_ID <= take_fwd_regval2_w ? fwd_regval2_w : regval2_ID_w;
       wregno_ID  <= wregno_ID_w;
       ctrlsig_ID <= ctrlsig_ID_w;
       immval_ID <= sxt_imm_ID_w;
@@ -340,8 +319,8 @@ module Project(
 
   wire is_br_EX_w;
   wire is_jmp_EX_w;
-  // wire rd_mem_EX_w; //added wire
-  // wire wr_mem_EX_w; //added wire
+  wire rd_mem_EX_w; //added wire
+  wire wr_mem_EX_w; //added wire
   wire [DBITS-1:0] pcgood_EX_w;
   wire [2:0] ctrlsig_EX_w;  //added wire
 
@@ -349,8 +328,8 @@ module Project(
   reg br_cond_EX;
   reg [2:0] ctrlsig_EX;
   // Note that aluout_EX_r is declared as reg, but it is output signal from combi logic
-  // reg signed [DBITS-1:0] aluout_EX_r;
-  // reg [DBITS-1:0] aluout_EX;
+  reg signed [DBITS-1:0] aluout_EX_r;
+  reg [DBITS-1:0] aluout_EX;
   reg [DBITS-1:0] regval2_EX;
 
   always @ (op1_ID or regval1_ID or regval2_ID) begin
@@ -399,7 +378,6 @@ module Project(
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
   assign rd_mem_EX_w = ctrlsig_ID[2];
-  assign wr_mem_EX_w = ctrlsig_ID[1];
   assign wr_reg_EX_w = ctrlsig_ID[0];
 
   assign ctrlsig_EX_w = { ctrlsig_ID[2], ctrlsig_ID[1], ctrlsig_ID[0] };
@@ -441,14 +419,14 @@ module Project(
 
   //*** MEM STAGE ***//
 
-  // wire rd_mem_MEM_w;
-  // wire wr_mem_MEM_w;
+  wire rd_mem_MEM_w;
+  wire wr_mem_MEM_w;
   
   wire [DBITS-1:0] memaddr_MEM_w;
-  // wire [DBITS-1:0] rd_val_MEM_w;
+  wire [DBITS-1:0] rd_val_MEM_w;
 
   // reg [INSTBITS-1:0] inst_MEM; /* This is for debugging */
-  // reg [DBITS-1:0] regval_MEM;  
+  reg [DBITS-1:0] regval_MEM;  
   // reg ctrlsig_MEM;
   // D-MEM
   (* ram_init_file = IMEMINITFILE *)
@@ -485,7 +463,7 @@ module Project(
 
   /*** WRITE BACK STAGE ***/ 
 
-  // wire wr_reg_WB_w;
+  wire wr_reg_WB_w;
   // regs is already declared in the ID stage
 
   assign wr_reg_WB_w = ctrlsig_MEM;
@@ -512,7 +490,25 @@ module Project(
       regs[wregno_MEM] <= regval_MEM;
    end
   end
-  
+
+  wire can_fwd_rs_MEM = (rs_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
+  wire can_fwd_rt_MEM = (rt_ID_w == wregno_MEM) && wr_reg_WB_w && (wregno_MEM != 0);
+
+  wire can_fwd_rs_EX = (rs_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
+  wire can_fwd_rt_EX = (rt_ID_w == wregno_EX) && wr_reg_MEM_w && (wregno_EX != 0);
+
+  wire can_fwd_rs_ID = (rs_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
+  wire can_fwd_rt_ID = (rt_ID_w == wregno_ID) && wr_reg_EX_w && (!rd_mem_EX_w) && (wregno_ID != 0);
+
+  assign fwd_regval1_w = can_fwd_rs_ID ? aluout_EX_r : (can_fwd_rs_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rs_MEM ? regval_MEM : 0));
+  assign fwd_regval2_w = can_fwd_rt_ID ? aluout_EX_r : (can_fwd_rt_EX ? (rd_mem_MEM_w ? rd_val_MEM_w : aluout_EX) : (can_fwd_rt_MEM ? regval_MEM : 0));
+
+  assign take_fwd_regval1_w = can_fwd_rs_MEM || can_fwd_rs_EX || can_fwd_rs_ID;
+  assign take_fwd_regval2_w = can_fwd_rt_MEM || can_fwd_rt_EX || can_fwd_rt_ID;
+
+  assign ignore_stall_MEM = can_fwd_rs_MEM || can_fwd_rt_MEM;
+  assign ignore_stall_EX = can_fwd_rs_EX || can_fwd_rt_EX;
+  assign ignore_stall_ID = can_fwd_rs_ID || can_fwd_rt_ID;
   
   /*** I/O ***/
   // Create and connect HEX register
@@ -544,9 +540,55 @@ module Project(
   end
 
   assign LEDR = LEDR_out;
-  
-endmodule
+  wire [31:0] regval2_MEM_w;
+  assign regval2_MEM_w = (wr_mem_MEM_w) ? regval2_EX : {DBITS{1'bz}};
 
+
+  // always @ (posedge clk or posedge reset) begin
+  //   if (reset)
+  //     KEYCTRL <= {KEYBITS{1'b0}};
+  //   else begin
+  //     KEYCTRL <= KEYCTRL_w;
+  //   end
+  // end
+
+  // KEY_DEVICE(KEY, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  KEY_DEVICE #(.BITS(DBITS), .BASE(ADDRKEY)) KEY_d(
+    .KEY(KEY),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_key),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+
+  SW_DEVICE #(.BITS(DBITS), .BASE(ADDRSW)) SW_d(
+    .SW(SW),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_key),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+
+  /*
+  LED_DEVICE #(.BITS(DBITS), .BASE(ADDRLEDR)) LED_d(
+    .LEDR(LEDR),
+    .ABUS(memaddr_MEM_w),
+    .DBUS(regval2_MEM_w),
+    .WE(wr_mem_MEM_w),
+    .INTR(intr_key),
+    .CLK(clk),.RESET(reset),.INIT(),
+    .DEBUG()
+  );
+  */
+
+
+
+
+endmodule
 
 module SXT(IN, OUT);
   parameter IBITS = 16;
@@ -558,3 +600,139 @@ module SXT(IN, OUT);
   assign OUT = {{(OBITS-IBITS){IN[IBITS-1]}}, IN};
 endmodule
 
+module KEY_DEVICE(KEY, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [3:0] KEY;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+  output wire INTR;
+
+  reg [BITS-1:0] KDATA;
+  reg [BITS-1:0] KCTRL;
+
+  wire sel_data = ABUS == BASE;             //address of KDATA
+  wire rd_data = !WE && sel_data;
+
+  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of KCTRL (control/status)
+  wire wr_ctrl = WE && sel_ctrl;
+  wire rd_ctrl = !WE && sel_ctrl;
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+  	if (RESET) begin
+  		KCTRL <= 32'b0;
+  		KDATA <= 32'b0;
+    end
+  	else if (KDATA != KEY) begin   //if change in KDATA detected
+  		if (KCTRL[0])
+        KCTRL[1] <= 1;             //overrun bit set
+      KCTRL[0] <= 1;               //ready bit set
+  	end
+  	else if (rd_data)              //if reading KDATA
+  		KCTRL[0] <= 0;
+    else if (wr_ctrl)
+      KCTRL <= {DBUS[4:2], (DBUS[1] & KCTRL[1])};
+    KDATA <= KEY;                  //sets KDATA.
+  end
+
+	//Reads
+  assign DBUS = rd_data ? KDATA :
+  							rd_ctrl ? KCTRL :
+  							{BITS{1'bz}};	
+
+  assign INTR = KCTRL[0];
+endmodule
+
+module SW_DEVICE(SW, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [3:0] SW;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+  output wire INTR;
+
+  reg [BITS-1:0] SDATA;
+  reg [BITS-1:0] SCTRL;
+
+  wire sel_data = ABUS == BASE;             //address of SDATA
+  wire rd_data = !WE && sel_data;
+
+  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of SCTRL (control/status)
+  wire wr_ctrl = WE && sel_ctrl;
+  wire rd_ctrl = !WE && sel_ctrl;
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+    if (RESET) begin
+      SCTRL <= 32'b0;
+      SDATA <= 32'b0;
+    end
+    else if (SDATA != SW) begin   //if change in SDATA detected
+      if (SCTRL[0])
+        SCTRL[1] <= 1;             //overrun bit set
+      SCTRL[0] <= 1;               //ready bit set
+    end
+    else if (rd_data)              //if reading SDATA
+      SCTRL[0] <= 0;
+    else if (wr_ctrl)
+      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
+    SDATA <= SW;                  //sets SDATA.
+  end
+
+  //Reads
+  assign DBUS = rd_data ? SDATA :
+                rd_ctrl ? SCTRL :
+                {BITS{1'bz}}; 
+
+  assign INTR = SCTRL[0];
+endmodule
+
+/*
+module LED_DEVICE(LEDR, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
+  parameter BITS;
+  parameter BASE;
+
+  input wire [3:0] LEDR;
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RESET,INIT;
+  output wire DEBUG;
+  output wire INTR = 0;
+
+  wire sel_data = ABUS == BASE;             //address of LEDR
+  wire wr_data = WE && sel_data;
+  wire rd_data = !WE && sel_data;
+
+
+  //Writes
+  always @(posedge CLK or posedge RESET) begin
+    if (RESET) begin
+      SCTRL <= 32'b0;
+      SDATA <= 32'b0;
+    end
+    else if (SDATA != LEDR) begin   //if change in SDATA detected
+      if (SCTRL[0])
+        SCTRL[1] <= 1;             //overrun bit set
+      SCTRL[0] <= 1;               //ready bit set
+    end
+    else if (rd_data)              //if reading SDATA
+      SCTRL[0] <= 0;
+    else if (wr_ctrl)
+      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
+    SDATA <= LEDR;                  //sets SDATA.
+  end
+
+  //Reads
+  assign DBUS = rd_data ? SDATA :
+                rd_ctrl ? SCTRL :
+                {BITS{1'bz}}; 
+
+endmodule
+*/
