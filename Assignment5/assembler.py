@@ -240,15 +240,15 @@ def assemble(source, depth=16384, width=32, address_radix='HEX', data_radix='HEX
 
             	if t[0] == 'reti':
 
-            		bin32 = opcode + '0000000000000000' # bin32
+            		bin32 = opcode + '00000000000000000000' # bin32
 
             	else:
 
-            		rd = special_regs[t[1].lower()]
+            		rs = special_regs[t[1].lower()]
 
-            		rs = special_regs[t[2].lower()]
+            		rt = special_regs[t[2].lower()]
 
-            		bin32 = opcode + rd + rs + '0000000000' # bin32
+            		bin32 = opcode + '0000000000000000' + rs + rt # bin32
 
             hex8 = hex(int(bin32,2))[2:].zfill(8) # hex8
 
