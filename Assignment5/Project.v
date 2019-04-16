@@ -72,6 +72,7 @@ module Project(
   parameter HEXBITS  = 24;
   parameter LEDRBITS = 10;
   parameter KEYBITS = 4;
+  parameter KEYCTRLBITS = 5;
  
   //*** PLL ***//
   // The reset signal comes from the reset button on the DE0-CV board
@@ -543,26 +544,14 @@ module Project(
   wire [31:0] regval2_MEM_w;
   assign regval2_MEM_w = regval2_EX;
 
-
-  // always @ (posedge clk or posedge reset) begin
-  //   if (reset)
-  //     KEYCTRL <= {KEYBITS{1'b0}};
-  //   else begin
-  //     KEYCTRL <= KEYCTRL_w;
-  //   end
-  // end
-
-  // KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
-  KEY_DEVICE #(.BITS(DBITS), .BASE(32'hFFFFF080)) KEY_d(
+  KEY_DEVICE #(.WBITS(DBITS), .DBITS(KEYBITS), .CBITS(KEYCTRLBITS) .BASE(32'hFFFFF080)) KEY_d(
     .ABUS(memaddr_MEM_w),
     .DBUS(regval2_MEM_w),
     .WE(wr_mem_MEM_w),
     .INTR(intr_key),
-    .CLK(clk),.LOCK(locked),.INIT(),
-    .DEBUG()
+    .CLK(clk),.RST(rst),
+    .KEY(KEY)
   );
-
-
 endmodule
 
 module SXT(IN, OUT);
@@ -575,53 +564,64 @@ module SXT(IN, OUT);
   assign OUT = {{(OBITS-IBITS){IN[IBITS-1]}}, IN};
 endmodule
 
-module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, LOCK, INIT, DEBUG);
-  parameter BITS;
+module SW_DEVICE(ABUS, DBUS, WE, INTR, CLK, RST);
+  parameter WBITS;
+  parameter DBITS;
+  parameter CBITS;
   parameter BASE;
 
   input wire [BITS-1:0] ABUS;
   inout wire [BITS-1:0] DBUS;
-  input wire WE,CLK,LOCK,INIT;
-  output wire DEBUG;
+  input wire WE,CLK,RST;
+
+endmodule
+
+module KEY_DEVICE(ABUS, DBUS, WE, INTR, CLK, RST, KEY);
+  parameter WBITS;
+  parameter DBITS;
+  parameter CBITS;
+  parameter BASE;
+
+  input wire [BITS-1:0] ABUS;
+  inout wire [BITS-1:0] DBUS;
+  input wire WE,CLK,RST;
+  input wire [DBITS-1:0] KEY;
   output wire INTR;
 
-  reg [DBITS-1:0] KDATA, KCTRL;
+  reg [DBITS-1:0] DATA;
+  reg [CBITS-1:0] CTRL;
 
-  wire sel_data = ABUS == BASE;             //address of KDATA
+  wire sel_data = ABUS == BASE;             //address of DATA
   wire rd_data = !WE && sel_data;
 
-  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of KCTRL (control/status)
+  wire sel_ctrl = ABUS == (BASE + 32'd4);   //address of CTRL (control/status)
   wire wr_ctrl = WE && sel_ctrl;
   wire rd_ctrl = !WE && sel_ctrl;
 
   //Writes
-  always @(posedge clk or posedge rst) begin
-  	if (rst) begin
-  		KCTRL <= 32'b0;
-  		KDATA <= 32'b0;
+  always @(posedge CLK or posedge RST) begin
+  	if (RST) begin
+  		CTRL <= {CBITS{1'b0}};
+  		DATA <= {DBITS{1'b0}};
     end
-  	else if (KDATA != KEY) begin   //if change in KDATA detected
-  		if (KCTRL[0])
-        KCTRL[1] <= 1;             //overrun bit set
-      KCTRL[0] <= 1;               //ready bit set
+  	else if (DATA != KEY) begin   //if change in DATA detected
+  		if (CTRL[0])
+        CTRL[1] <= 1;             //overrun bit set
+      CTRL[0] <= 1;               //ready bit set
   	end
-  	else if (rd_data)              //if reading KDATA
-  		KCTRL[0] <= 0;
+  	else if (rd_data)              //if reading DATA
+  		CTRL[0] <= 0;
     else if (sel_ctrl)
-      KCTRL <= {DBUS[4:2], (DBUS[1] & KCTRL[1])};
-    KDATA <= KEY;                  //sets KDATA.
+      CTRL <= {DBUS[4:2], (DBUS[1] & CTRL[1])};
+
+    DATA <= KEY;                  //sets DATA.
   end
 
 
 	//Reads
-  assign DBUS = rd_data ? KDATA :
-  							rd_ctrl ? KCTRL :
+  assign DBUS = rd_data ? DATA :
+  							rd_ctrl ? CTRL :
   							{BITS{1'bz}};	
 
-  assign INTR = sel_rdy;
-
-  assign DBUS = rd_rdy ? CTRL[0] :
-                (rd_over ? CTRL[1] :
-                (rd_ien ? CTRL[4] : {BITS{1'bz}}));
-
+  assign INTR = CTRL[0];
 endmodule
