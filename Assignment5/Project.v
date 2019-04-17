@@ -18,6 +18,7 @@ module Project(
   parameter REGNOBITS = 4;
   parameter REGWORDS = (1 << REGNOBITS);
   parameter IMMBITS  = 16;
+  parameter INTRPC	 = 32'h10;
   parameter STARTPC  = 32'h100;
   parameter ADDRHEX  = 32'hFFFFF000;
   parameter ADDRLEDR = 32'hFFFFF020;
@@ -109,6 +110,9 @@ module Project(
   reg [DBITS-1:0] imem [IMEMWORDS-1:0];
   reg mispred_EX;
   
+  // System Register file
+  reg [DBITS-1:0] sys_regs [3:0];			//4 registers of width 32
+
   // This statement is used to initialize the I-MEM
   // during simulation using Model-Sim
   initial begin
@@ -120,6 +124,8 @@ module Project(
   always @ (posedge clk or posedge reset) begin
     if(reset)
       PC_FE <= STARTPC;
+    else if (IRQ)
+    	PC_FE <= INTRPC; 			//PC_FE is 0x10.
     else if(mispred_EX)
       PC_FE <= pcgood_EX;   //pcgood set to place that branch would go to
     else if(!stall_pipe)
@@ -433,6 +439,21 @@ module Project(
   (* ram_init_file = IMEMINITFILE *)
   reg [DBITS-1:0] dmem[DMEMWORDS-1:0];
 
+  wire IRQ = intr_key || intr_sw || intr_timer;
+  always @(posedge clk or posedge reset) begin
+  	if (reset) begin
+  		sys_regs[3] <= 3; 		//b11 is value of no interrupt.
+  	end
+  	else if (IRQ) begin
+  		sys_regs[3] <= intr_timer ? 0:
+  										intr_key ? 1 :
+  										intr_sw ? 2 :
+  										3; //this shouldnt happen. IRQ should only be 0,1,2.
+  	end
+  end
+
+
+
   assign memaddr_MEM_w = aluout_EX;
   assign rd_mem_MEM_w = ctrlsig_EX[2];
   assign wr_mem_MEM_w = ctrlsig_EX[1];
@@ -650,6 +671,8 @@ module SW_DEVICE(SW, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
 
   reg [BITS-1:0] SDATA;
   reg [BITS-1:0] SCTRL;
+  reg [3:0] temp;
+  reg [BITS-1:0] counter;
 
   wire sel_data = ABUS == BASE;             //address of SDATA
   wire rd_data = !WE && sel_data;
@@ -658,22 +681,29 @@ module SW_DEVICE(SW, ABUS, DBUS, WE, INTR, CLK, RESET, INIT, DEBUG);
   wire wr_ctrl = WE && sel_ctrl;
   wire rd_ctrl = !WE && sel_ctrl;
 
-  //Writes
+  //Debouncing switch. There will be an interrupt at the beginning even without switch press.
   always @(posedge CLK or posedge RESET) begin
-    if (RESET) begin
-      SCTRL <= 32'b0;
-      SDATA <= 32'b0;
-    end
-    else if (SDATA != SW) begin   //if change in SDATA detected
-      if (SCTRL[0])
+  	if (RESET) begin
+      temp <= 4'b0;
+      counter <= {BITS{1'b0}};
+      SDATA <= {BITS{1'b0}};
+      SCTRL <= {BITS{1'b0}};
+  	end else if (temp == SW) begin
+  		counter <= counter + 1;
+  	end else if (temp != SW) begin
+  		counter <= 0;
+  	end else if (counter == 1350000) begin			//15 ms elapsed, an actual switch!
+  		SDATA <= temp;									//switch change detected
+  		 if (SCTRL[0])
         SCTRL[1] <= 1;             //overrun bit set
-      SCTRL[0] <= 1;               //ready bit set
-    end
-    else if (rd_data)              //if reading SDATA
-      SCTRL[0] <= 0;
-    else if (wr_ctrl)
-      SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
-    SDATA <= SW;                  //sets SDATA.
+      SCTRL[0] <= 1;
+      //counter <= 0;								// don't want to reset counter because then it will trigger again after 10 ms.
+	end else if (rd_data)
+		SCTRL[0] <= 0;
+	else if (wr_ctrl)
+		SCTRL <= {DBUS[4:2], (DBUS[1] & SCTRL[1])};
+
+	temp <= SW;
   end
 
   //Reads
@@ -775,8 +805,6 @@ module HEX_DEVICE(HEX, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
 
   assign DBUS = (rd_data) ? HEX_out : {BITS{1'bz}};
 endmodule
-
-
 
 module LED_DEVICE(LEDR, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
   parameter BITS;
