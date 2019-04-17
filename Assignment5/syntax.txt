@@ -1,11 +1,10 @@
 --------------------------------------------
 TO DO
 --------------------------------------------
-Change assembler to support new instructions and registers
-Add device modules for KEY, SW, LEDR, HEX, and TIMER
-Write and add interrupt handlers
-Build the Interrupt Controller
-	Write xmax.asm
+		Change assembler to support new instructions and registers
+		Add device modules for KEY, SW, LEDR, HEX, and TIMER
+Build the Interrupt Controller and interrupt support in verilog
+	Write xmax.asm and add interrupt handlers
 
 --------------------------------------------
 REGISTERS

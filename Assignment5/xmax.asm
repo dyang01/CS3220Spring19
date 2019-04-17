@@ -1,13 +1,34 @@
-; Addresses for I/O
-.NAME	HEX = 	0xFFFFF000
-.NAME	LEDR =	0xFFFFF020
-.NAME	KEY = 	0xFFFFF080
-.NAME 	TIMER = 0xFFFFF104
+.ORG 	0x10
+InterruptHandler:
+	; Interrupts are disabled by HW before this
+	RSR		T0, IDN
+	LW 		T1, TM(0)
+	BNE 	T0, T1, NotTimer
+	; Is a timer interrupt
+	; Branch to UpperBlink, LowerBlink, or FullBlink based on blink state (0 -> 8) A1
+	ADD 	T0, A1, Zero
+	ADDI 	Zero, T1, 3
+	
 
-; IDN Values
-.NAME	BT	= 00
-.NAME	SW	= 01
-.NAME	TI	= 10
+	BR EndInterruptHandler
+	NotTimer:
+	LW 		T1, BT(0)
+	BNE 	T0, T1, NotButton
+	; Is a button interrupt
+
+	BR EndInterruptHandler
+	NotButton:
+	LW 		T1, SW(0)
+	BNE 	T0, T1, NotSwitch
+	; Is a switch interrupt
+
+	BR EndInterruptHandler
+	NotSwitch:
+	; Is a key interrupt
+
+	EndInterruptHandler:
+	RETI
+
 
 ; Processor Initialization
 	.ORG	0x100
@@ -23,45 +44,22 @@
 InfiniteLoop:
 	BR		InfiniteLoop 				; Main Loop. Interrupts should occur here.
 
-; Currently a memory leak from adding to stack and never removing from stack.
-InterruptHandler:						; Begins at interrupt start.
-; _____________________________________________________________________ NOT SURE IF GOOD
-	ANDI	PCS, PCS, 0xFFFFFFFE		; Diasbled interrupts. Sets IE = 0
-	ADDI	SSP, SSP, -8				; Grows stack. Saves 2 regs.
-	SW		T0, 0(SSP)					; Saves T0 to system stack
-	SW		T1, 4(SSP)					; Saves T1 to system stack
-; _____________________________________________________________________
-	RSR		T0, IDN						; Get cause of interrupt.
-	BEQ		T0, Zero, Timer				; If IDN == 0, then Timer interrupt
-	ADDI 	Zero, T1, 1
-	BNE 	T1, T0, InfiniteLoop 		; If NOT a KEY, then ignore interrupt. Back to main loop.
-										; This code is ONLY executed if KEY interrupt
-	LW 		T0, KEY(Zero)				; Loads T0 with state of all 4 KEY values
-	BEQ 	T0, T1, Slow 				; If KEY[0] == 1 then Slow
-	BR 		Fast 						; If not KEY[0] then KEY[1].
-
-Timer:
-	BEQ 	A1, Zero, UpperBlink 		; Check if state == 0. Then UpperBlink
-	ADDI 	Zero, T0, 1
-	BEQ		A1, T0, LowerBlink 			; Check if state == 1. Then LowerBlink
-	BR 		FullBlink		 			; Must be FullBlink
-
 UpperBlink:
 	ADDI 	Zero, T0, 0x3E0 			; 3E0 is top 5 LEDs.
 	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, 1 					; Increments state to 1.
+	ADDI 	A1, A1, 1 					; Increments state
 	BR 		InfiniteLoop 				; Returns to main loop.	
 
 LowerBlink:
 	ADDI 	Zero, T0, 0x1F 				; 1F is bottom 5 LEDs
-	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, 1 					; Increments state to 2.
+	SW 		T0, LEDR(Zero)				; Writes LowerBlink to LEDR.
+	ADDI 	A1, A1, 1 					; Increments state
 	BR 		InfiniteLoop 				; Returns to main loop. 
 
 FullBlink:
-	ADDI 	Zero, T0, 0x3FF				; 3FF is bottom 5 LEDs
-	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, -2 					; Increments state to 0.
+	ADDI 	Zero, T0, 0x3FF				; 3FF is all LEDs
+	SW 		T0, LEDR(Zero)				; Writes FullBlink to LEDR.
+	ADDI 	Zero, A1, 0					; State = 0
 	BR 		InfiniteLoop 				; Returns to main loop. 
 
 Fast:
@@ -81,3 +79,22 @@ Slow:
 	ADDI 	S1, S1, 250 				; Increase blink time by 250 ms
 	SW 		S1, TIMER(Zero) 			; Set new TLIM
 	BR 		InfiniteLoop
+
+; Addresses for I/O
+.NAME	HEX = 	0xFFFFF000
+.NAME	LEDR =	0xFFFFF020
+.NAME	KEY = 	0xFFFFF080
+.NAME 	TIMER = 0xFFFFF104
+
+; IDN Values
+.NAME	BT	= 00
+.NAME	SW	= 01
+.NAME	TI	= 10
+
+; Bit masks
+.NAME	BIT0 = 0x1
+.NAME 	BIT1 = 0x2
+.NAME	BIT2 = 0x4
+.NAME	BIT3 = 0x8
+.NAME	BIT4 = 0x10
+.NAME	BIT5 = 0x11
