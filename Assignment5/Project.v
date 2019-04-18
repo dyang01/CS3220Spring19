@@ -111,6 +111,7 @@ module Project(
   wire [DBITS-1:0] inst_FE_w;   //instruction wire that goes to ID/RR
   wire stall_pipe;
   wire mispred_EX_w;
+  wire reti;
   
   reg [DBITS-1:0] pcgood_EX;
   reg [DBITS-1:0] PC_FE;
@@ -121,8 +122,8 @@ module Project(
   reg mispred_EX;
   
   // System register file
-  reg [DBITS-1:0] sys_regs [SYSREGWORDS-1:0]; // 4 registers of width 32
   wire [DBITS-1:0] intr_ret_addr; // Interrupt return address
+  reg [DBITS-1:0] sys_regs [SYSREGWORDS-1:0]; // 4 registers of width 32
   reg NOP_ID;
   reg NOP_EX;
   reg NOP_MEM;
@@ -146,6 +147,8 @@ module Project(
       PC_FE <= pcgood_EX;   //pcgood set to place that branch would go to
     else if(!stall_pipe)
       PC_FE <= pcpred_FE; //for normal execution
+    else if(reti)
+      PC_FE <= sys_regs[2];
     else
       PC_FE <= PC_FE;	//for bubbles
   end
@@ -177,15 +180,21 @@ module Project(
   wire [REGNOBITS-1:0] rd_ID_w;
   wire [REGNOBITS-1:0] rs_ID_w;
   wire [REGNOBITS-1:0] rt_ID_w;
+  wire [SYSREGNOBITS-1:0] srd_ID_w;
+  wire [SYSREGNOBITS-1:0] srs_ID_w;
   // Two read ports, always using rs and rt for register numbers
   wire [DBITS-1:0] regval1_ID_w;
   wire [DBITS-1:0] regval2_ID_w;
+  // wire [DBITS-1:0] sysregval1_ID_w;
+  wire [DBITS-1:0] sysregval2_ID_w;
   wire [DBITS-1:0] sxt_imm_ID_w;  //same as imm_ID_w but sext'd
   wire is_br_ID_w;
   wire is_jmp_ID_w;
   wire rd_mem_ID_w;
   wire wr_mem_ID_w;
   wire wr_reg_ID_w;
+  wire is_sys_inst_ID_w;
+  wire wr_sys_rd_ID_w;
   wire [4:0] ctrlsig_ID_w;
   wire [REGNOBITS-1:0] wregno_ID_w;
   wire wr_reg_EX_w;
@@ -196,6 +205,7 @@ module Project(
   reg [DBITS-1:0] regs [REGWORDS-1:0];  //16 registers of width 32
   reg signed [DBITS-1:0] regval1_ID;
   reg signed [DBITS-1:0] regval2_ID;
+  reg signed [DBITS-1:0] sysregval_ID;
   reg signed [DBITS-1:0] immval_ID;
   reg [OP1BITS-1:0] op1_ID;
   reg [OP2BITS-1:0] op2_ID;
@@ -214,10 +224,16 @@ module Project(
   assign rd_ID_w = inst_FE[11:8];
   assign rs_ID_w = inst_FE[7:4];
   assign rt_ID_w = inst_FE[3:0];
+  assign srd_ID_w = inst_FE[19:18];
+  assign srs_ID_w = inst_FE[17:16];
 
   // Read register values
   assign regval1_ID_w = regs[rs_ID_w];
   assign regval2_ID_w = regs[rt_ID_w];
+  // assign sysregval1_ID_w = sys_regs[srd_ID_w];
+  assign sysregval2_ID_w = sys_regs[srs_ID_w];
+
+
 
   // Sign extension
   SXT mysxt (.IN(imm_ID_w), .OUT(sxt_imm_ID_w));
@@ -230,6 +246,8 @@ module Project(
   assign wr_mem_ID_w = (op1_ID_w[5:3] == 3'b011); //see lec 2 slide 24
   assign wr_reg_ID_w = (op1_ID_w == 6'b000000) || (op1_ID_w == 6'b001100) ||
     (op1_ID_w == 6'b010010) || (op1_ID_w[5:3] == 3'b100); //includes EXT, JAL, LW, ALUI
+  assign is_sys_inst_ID_w = (op1_ID_w == 6'b111111);
+  assign wr_sys_rd_ID_w = (op2_ID_w == OP2_RSR);
 
   assign ctrlsig_ID_w = {is_br_ID_w, is_jmp_ID_w, rd_mem_ID_w, wr_mem_ID_w, wr_reg_ID_w};
   
@@ -238,6 +256,9 @@ module Project(
 
   reg [INSTBITS-1:0] inst_MEM; /* This is for debugging */
   reg [INSTBITS-1:0] inst_EX; /* This is for debugging */
+  reg is_sys_inst_ID;
+  reg is_reti_ID;
+  reg is_reti_EX;
 
   wire ext_inst = op1_ID_w[5:3] == 3'b000;
   wire br_inst = op1_ID_w[5:2] == 4'b0010;
@@ -283,10 +304,14 @@ module Project(
   wire take_fwd_regval2_w;
   wire [DBITS-1:0] fwd_regval1_w;
   wire [DBITS-1:0] fwd_regval2_w;
+  wire is_reti_ID_w;
 
   assign stall_pipe = (stall_from_MEM2 && !ignore_stall_MEM) || (stall_from_EX2 && !ignore_stall_EX)
-    || (stall_from_ID2 && !ignore_stall_ID);
-  assign wregno_ID_w = (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w; //assume only EXT has wregno == rd.
+    || (stall_from_ID2 && !ignore_stall_ID) || is_reti_EX;
+  assign wregno_ID_w = is_sys_inst_ID_w ? (wr_sys_rd_ID_w ? rd_ID_w : srd_ID_w) : (
+  (op1_ID_w[5:3] == 3'b000) ? rd_ID_w : rt_ID_w); //assume only EXT has wregno == rd.
+  assign is_reti_ID_w = (op1_ID_w == OP1_SYS) && (op2_ID_w == OP2_RETI);
+
 
   // ID_latch
   always @ (posedge clk or posedge reset) begin
@@ -297,10 +322,13 @@ module Project(
       op2_ID   <= {OP2BITS{1'b0}};
       regval1_ID  <= {DBITS{1'b0}};
       regval2_ID  <= {DBITS{1'b0}};
+      sysregval_ID <= {DBITS{1'b0}};
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
       immval_ID <= {DBITS{1'b0}}; //added
       NOP_ID <= 1'b1;
+      is_sys_inst_ID <= 1'b0;
+      is_reti_ID <= 1'b0;
     end else if(IRQ) begin
       PC_ID  <= {DBITS{1'b0}};
       inst_ID  <= {INSTBITS{1'b0}};
@@ -308,10 +336,13 @@ module Project(
       op2_ID   <= {OP2BITS{1'b0}};
       regval1_ID  <= {DBITS{1'b0}};
       regval2_ID  <= {DBITS{1'b0}};
+      sysregval_ID <= {DBITS{1'b0}};
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
       immval_ID <= {DBITS{1'b0}}; //added
       NOP_ID <= 1'b1;
+      is_sys_inst_ID <= 1'b0;
+      is_reti_ID <= 1'b0;
     end else if(mispred_EX) begin
     	PC_ID  <= {DBITS{1'b0}};
       inst_ID  <= {INSTBITS{1'b0}};
@@ -319,10 +350,13 @@ module Project(
       op2_ID   <= {OP2BITS{1'b0}};
       regval1_ID  <= {DBITS{1'b0}};
       regval2_ID  <= {DBITS{1'b0}};
+      sysregval_ID <= {DBITS{1'b0}};
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
       immval_ID <= {DBITS{1'b0}}; //added
       NOP_ID <= 1'b1;
+      is_sys_inst_ID <= 1'b0;
+      is_reti_ID <= 1'b0;
     end else if(stall_pipe) begin
     	PC_ID  <= {DBITS{1'b0}};
       inst_ID  <= {INSTBITS{1'b0}};
@@ -330,22 +364,27 @@ module Project(
       op2_ID   <= {OP2BITS{1'b0}};
       regval1_ID  <= {DBITS{1'b0}};
       regval2_ID  <= {DBITS{1'b0}};
+      sysregval_ID <= {DBITS{1'b0}};
       wregno_ID  <= {REGNOBITS{1'b0}};
       ctrlsig_ID <= 5'h0;
       immval_ID <= {DBITS{1'b0}}; //added
       NOP_ID <= 1'b1;
+      is_sys_inst_ID <= 1'b0;
+      is_reti_ID <= 1'b0;
     end else begin
       PC_ID  <= PC_FE;
-    // DONE: Specify ID latches
-      inst_ID <= inst_FE; //idk about this one
+      inst_ID <= inst_FE;
       op1_ID   <= op1_ID_w;
       op2_ID   <= op2_ID_w;
       regval1_ID <= take_fwd_regval1_w ? fwd_regval1_w : regval1_ID_w;
       regval2_ID <= take_fwd_regval2_w ? fwd_regval2_w : regval2_ID_w;
+      sysregval_ID <= wr_sys_rd_ID_w ? sysregval2_ID_w : regval1_ID_w;
       wregno_ID  <= wregno_ID_w;
       ctrlsig_ID <= ctrlsig_ID_w;
       immval_ID <= sxt_imm_ID_w;
       NOP_ID <= 1'b0;
+      is_sys_inst_ID <= is_sys_inst_ID_w;
+      is_reti_ID <= is_reti_ID_w;
     end
   end
 
@@ -370,8 +409,12 @@ module Project(
   reg signed [DBITS-1:0] aluout_EX_r;
   reg [DBITS-1:0] aluout_EX;
   reg [DBITS-1:0] regval2_EX;
+  reg [DBITS-1:0] sysregval_EX;
   reg rd_sys_EX_r;
   reg wr_sys_EX_r;
+  reg rd_sys_EX;
+  reg wr_sys_EX;
+  reg is_sys_inst_EX;
 
   always @ (op1_ID or regval1_ID or regval2_ID) begin
     case (op1_ID)
@@ -385,7 +428,7 @@ module Project(
 
   always @ (op1_ID or op2_ID or regval1_ID or regval2_ID or immval_ID) begin
     if(op1_ID == OP1_ALUR)
-      case (op2_ID) //TODO complete op2
+      case (op2_ID)
         OP2_EQ    : aluout_EX_r = {31'b0, regval1_ID == regval2_ID};
         OP2_LT    : aluout_EX_r = {31'b0, regval1_ID < regval2_ID};
         OP2_LE    : aluout_EX_r = {31'b0, regval1_ID <= regval2_ID};
@@ -415,21 +458,21 @@ module Project(
     else if(op1_ID == OP1_SYS) begin
       case (op2_ID)
         OP2_RETI  : begin
-                      sys_regs[0][0] <= sys_regs[0][1];
-                      PC_FE <= sys_regs[2];   // Feel like this is wrong
-                    end;
+                      // sys_regs[0][0] <= sys_regs[0][1];
+                      // reti <= 1;
+                    end
         OP2_RSR   : begin
-                      aluout_EX_r = ;
                       rd_sys_EX_r = 1;
-                    end;
+                    end
         OP2_WRS   : begin
-                      aluout_EX_r = ;
                       wr_sys_EX_r = 1;
-                    end;
+                    end
       endcase
     end else
       aluout_EX_r = {DBITS{1'b0}};
   end
+
+  // assign reti = (op1_ID_w == OP1_SYS) && (op2_ID_w == OP2_RETI);
 
   assign is_br_EX_w = ctrlsig_ID[4];
   assign is_jmp_EX_w = ctrlsig_ID[3];
@@ -452,8 +495,13 @@ module Project(
       mispred_EX <= 1'b0;
       pcgood_EX  <= {DBITS{1'b0}};
       regval2_EX  <= {DBITS{1'b0}};
+      sysregval_EX <= {DBITS{1'b0}};
       NOP_EX <= 1'b1;
       PC_EX <= {DBITS{1'b0}};
+      wr_sys_EX <= 1'b0;
+      rd_sys_EX <= 1'b0;
+      is_sys_inst_EX <= 1'b0;
+      is_reti_EX <= 1'b0;
     end else if(IRQ) begin
       inst_EX  <= {INSTBITS{1'b0}};
       aluout_EX  <= {DBITS{1'b0}};
@@ -462,8 +510,13 @@ module Project(
       mispred_EX <= 1'b0;
       pcgood_EX  <= {DBITS{1'b0}};
       regval2_EX  <= {DBITS{1'b0}};
+      sysregval_EX <= {DBITS{1'b0}};
       NOP_EX <= 1'b1;
       PC_EX <= {DBITS{1'b0}};
+      wr_sys_EX <= 1'b0;
+      rd_sys_EX <= 1'b0;
+      is_sys_inst_EX <= 1'b0;
+      is_reti_EX <= 1'b0;
     end else if(mispred_EX) begin
       inst_EX  <= {INSTBITS{1'b0}};
       aluout_EX  <= {DBITS{1'b0}};
@@ -472,8 +525,13 @@ module Project(
       mispred_EX <= 1'b0;
       pcgood_EX  <= {DBITS{1'b0}};
       regval2_EX  <= {DBITS{1'b0}};
+      sysregval_EX <= {DBITS{1'b0}};
       NOP_EX <= 1'b1;
       PC_EX <= {DBITS{1'b0}};
+      wr_sys_EX <= 1'b0;
+      rd_sys_EX <= 1'b0;
+      is_sys_inst_EX <= 1'b0;
+      is_reti_EX <= 1'b0;
     end else begin
     // TODO: Specify EX latches
       inst_EX <= inst_ID;
@@ -483,8 +541,13 @@ module Project(
       mispred_EX <= mispred_EX_w;
       pcgood_EX <= pcgood_EX_w;
       regval2_EX <= regval2_ID;
+      sysregval_EX <= sysregval_ID;
       NOP_EX <= 1'b0;
       PC_EX <= PC_ID;
+      wr_sys_EX <= wr_sys_EX_r;
+      rd_sys_EX <= rd_sys_EX_r;
+      is_sys_inst_EX <= is_sys_inst_ID;
+      is_reti_EX <= is_reti_ID;
     end
   end
   
@@ -513,8 +576,7 @@ module Project(
       sys_regs[1] <= {DBITS{1'b0}};
       sys_regs[2] <= {DBITS{1'b0}};
       sys_regs[3] <= {DBITS{1'b0}};
-  	end
-  	else if (IRQ) begin
+  	end else if (IRQ) begin
   		/*
         Deal with system regs
         00 PCS - Disable interrupts
@@ -529,8 +591,16 @@ module Project(
       sys_regs[3] <=  intr_timer ? TIMER_ID :
                       intr_key ? KEY_ID :
                       intr_sw ? SWITCH_ID : {DBITS{1'bz}};
-  	end
+  	end else if (is_sys_inst_EX) begin
+     if (wr_sys_EX)
+      sys_regs[wregno_EX] = sysregval_EX;
+     // else if (rd_sys_EX)
+     //  regs[wregno_EX] = sysregval_EX;
+    end else if (is_reti_EX) begin
+      sys_regs[0][0] <= sys_regs[0][1];
+    end
   end
+  assign reti = is_reti_EX;
 
   assign memaddr_MEM_w = aluout_EX;
   assign rd_mem_MEM_w = ctrlsig_EX[2];
@@ -886,7 +956,7 @@ module HEX_DEVICE(HEX, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
   SevenSeg ss1(.OUT(HEX[11:6]), .IN(HEX_out[7:4]), .OFF(1'b0));
   SevenSeg ss0(.OUT(HEX[5:0]), .IN(HEX_out[3:0]), .OFF(1'b0));
 
-  assign DBUS = (rd_data) ? {8{1'b0}, HEX_out} : {BITS{1'bz}};
+  assign DBUS = (rd_data) ? {{8{1'b0}}, HEX_out} : {BITS{1'bz}};
 endmodule
 
 module LED_DEVICE(LEDR, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
@@ -914,5 +984,5 @@ module LED_DEVICE(LEDR, ABUS, DBUS, WE, CLK, RESET, INIT, DEBUG);
   		LED_register <= LEDR;
   end
 
-  assign DBUS = (rd_data) ? {22{1'b0}, LED_register} : {BITS{1'bz}};
+  assign DBUS = (rd_data) ? {{22{1'b0}}, LED_register} : {BITS{1'bz}};
 endmodule
