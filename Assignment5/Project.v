@@ -26,8 +26,6 @@ module Project(
   parameter ADDRLEDR = 32'hFFFFF020;
   parameter ADDRKEY  = 32'hFFFFF080;
   parameter ADDRSW   = 32'hFFFFF090;
-  parameter ADDRKCTRL = 32'hFFFFF084;
-  parameter ADDRSCTRL = 32'hFFFFF094;
   parameter ADDRTIMER = 32'hFFFFF100;
 
   // Change this to fmedian2.mif before submitting
