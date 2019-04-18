@@ -2,11 +2,11 @@
 InterruptHandler:
 	; Interrupts are disabled by HW before this
 	RSR		T0, IDN 								; T0 is interrupt device number
-	LW 		T1, TI(0)
+	LW 		T1, TI(Zero)
 	BEQ 	T0, T1, TimerHandler 		; Is a timer interrupt
-	LW 		T1, KY(0)
+	LW 		T1, KY(Zero)
 	BEQ 	T0, T1, KeyHandler 			; Is a key interrupt
-	LW 		T1, SW(0)
+	LW 		T1, SW(Zero)
 	BEQ 	T0, T1, SwitchHandler 	; Is a switch interrupt
 	; Execution should not occur here!!
 	RETI
@@ -40,12 +40,12 @@ SwitchHandler:
 		RETI
 	Not1:
 		LW 		S0, BIT2(Zero)
-		BGE 	T1, S0, NOT2
+		BGE 	T1, S0, Not2
 		ADDI 	Zero, S2, 2
 		RETI
 	Not2:
 		LW 		S0, BIT3(Zero)
-		BGE 	T1, S0, NOT3
+		BGE 	T1, S0, Not3
 		ADDI 	Zero, S2, 3
 		RETI
 	Not3:

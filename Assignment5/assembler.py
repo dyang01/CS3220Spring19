@@ -242,13 +242,21 @@ def assemble(source, depth=16384, width=32, address_radix='HEX', data_radix='HEX
 
             		bin32 = opcode + '0000000000000000' # bin32
 
-            	else:
+            	elif t[0] == 'rsr':
 
-            		rd = special_regs[t[1].lower()]
+                    rd = regs[t[1].lower()];
 
-            		rs = special_regs[t[2].lower()]
+                    ss = special_regs[t[2].lower()];
 
-            		bin32 = opcode + rd + rs + '0000000000' # bin32
+                    bin32 = opcode + rd + ss + '0000000000' # bin32
+
+                elif t[0] == 'wrs':
+
+                    sd = special_regs[t[1].lower()];
+
+                    rs = regs[t[2].lower()];
+            		
+                    bin32 = opcode + sd + rs + '0000000000' # bin32
 
             hex8 = hex(int(bin32,2))[2:].zfill(8) # hex8
 
