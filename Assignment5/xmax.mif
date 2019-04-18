@@ -25,27 +25,27 @@ BEGIN
     0015 : 20005556; --> 0054 : BEQ 	T0, T1, Slow
     0016 : 20004e00; --> 0058 : BR Fast
     0017 : 48f09006; --> 005c : LW 		T1, SWITCH(Zero)
-    0018 : 48000107; --> 0060 : LW 		S0, BIT0(Zero)
+    0018 : 80000107; --> 0060 : ADDI 	Zero, S0, 1
     0019 : 28000276; --> 0064 : BGE 	T1, S0, Not0
     001a : 80000009; --> 0068 : ADDI 	Zero, S2, 0
     001b : 20001300; --> 006c : BR 		FinishSwitch
-    001c : 48000207; --> 0070 : LW 		S0, BIT1(Zero)
+    001c : 80000207; --> 0070 : ADDI 	Zero, S0, 2
     001d : 28000276; --> 0074 : BGE 	T1, S0, Not1
     001e : 80000709; --> 0078 : ADDI 	Zero, S2, 7
     001f : 20000f00; --> 007c : BR 		FinishSwitch
-    0020 : 48000407; --> 0080 : LW 		S0, BIT2(Zero)
+    0020 : 80000407; --> 0080 : ADDI 	Zero, S0, 4
     0021 : 28000276; --> 0084 : BGE 	T1, S0, Not2
     0022 : 80000e09; --> 0088 : ADDI 	Zero, S2, 14
     0023 : 20000b00; --> 008c : BR 		FinishSwitch
-    0024 : 48000807; --> 0090 : LW 		S0, BIT3(Zero)
+    0024 : 80000807; --> 0090 : ADDI 	Zero, S0, 8
     0025 : 28000276; --> 0094 : BGE 	T1, S0, Not3
     0026 : 80001509; --> 0098 : ADDI 	Zero, S2, 21
     0027 : 20000700; --> 009c : BR 		FinishSwitch
-    0028 : 48001007; --> 00a0 : LW 		S0, BIT4(Zero)
+    0028 : 80001007; --> 00a0 : ADDI 	Zero, S0, 16
     0029 : 28000276; --> 00a4 : BGE 	T1, S0, Not4
     002a : 80001c09; --> 00a8 : ADDI 	Zero, S2, 28
     002b : 20000300; --> 00ac : BR 		FinishSwitch
-    002c : 48002007; --> 00b0 : LW 		S0, BIT5(Zero)
+    002c : 80002007; --> 00b0 : ADDI 	Zero, S0, 32
     002d : 28000376; --> 00b4 : BGE 	T1, S0, EndInterruptHandler
     002e : 80002309; --> 00b8 : ADDI 	Zero, S2, 35
     002f : 00c40919; --> 00bc : LSHF 	S2, A0, S2
@@ -59,12 +59,12 @@ BEGIN
     0044 : 00800400; --> 0110 : ADD 	A3, Zero, Zero
     0045 : 8001f408; --> 0114 : ADDI 	Zero, S1, 500
     0046 : 68f10408; --> 0118 : SW 		S1, TIMERLIM(Zero)
-    0047 : 48001005; --> 011c : LW 		T0, BIT4(Zero)
+    0047 : 80001005; --> 011c : ADDI 	Zero, T0, 16
     0048 : 68f08405; --> 0120 : SW 		T0, KEYCTRL(Zero)
     0049 : 68f09405; --> 0124 : SW 		T0, SWITCHCTRL(Zero)
     004a : 68f10805; --> 0128 : SW 		T0, TIMERCTRL(Zero)
     004b : 3f025000; --> 012c : RSR 	T0, PCS
-    004c : 94000155; --> 0130 : ORI		T0, T0, BIT0
+    004c : 94000155; --> 0130 : ORI		T0, T0, 1
     004d : 3f031400; --> 0134 : WRS 	PCS, T0
     004e : 20ffff00; --> 0138 : BR		InfiniteLoop
     004f : 8003e005; --> 013c : ADDI 	Zero, T0, 0x3E0

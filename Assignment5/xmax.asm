@@ -28,32 +28,32 @@ KeyHandler:
 
 SwitchHandler:
 		LW 		T1, SWITCH(Zero) 				; Loads T1 with state of all 10 SWITCH values.
-		LW 		S0, BIT0(Zero) 					; checks for position of each switch
+		ADDI 	Zero, S0, 1
 		BGE 	T1, S0, Not0
 		ADDI 	Zero, S2, 0
 		BR 		FinishSwitch
 	Not0:
-		LW 		S0, BIT1(Zero)
+		ADDI 	Zero, S0, 2
 		BGE 	T1, S0, Not1
 		ADDI 	Zero, S2, 7
 		BR 		FinishSwitch
 	Not1:
-		LW 		S0, BIT2(Zero)
+		ADDI 	Zero, S0, 4
 		BGE 	T1, S0, Not2
 		ADDI 	Zero, S2, 14
 		BR 		FinishSwitch
 	Not2:
-		LW 		S0, BIT3(Zero)
+		ADDI 	Zero, S0, 8
 		BGE 	T1, S0, Not3
 		ADDI 	Zero, S2, 21
 		BR 		FinishSwitch
 	Not3:
-		LW 		S0, BIT4(Zero)
+		ADDI 	Zero, S0, 16
 		BGE 	T1, S0, Not4
 		ADDI 	Zero, S2, 28
 		BR 		FinishSwitch
 	Not4:
-		LW 		S0, BIT5(Zero)
+		ADDI 	Zero, S0, 32
 		BGE 	T1, S0, EndInterruptHandler
 		ADDI 	Zero, S2, 35
 	FinishSwitch:
@@ -73,12 +73,12 @@ SwitchHandler:
 	ADD 	A3, Zero, Zero 				; Sets on/off state to 0
 	ADDI 	Zero, S1, 500				; S1 = blink time in millis . S1 = 500 ms (default)
 	SW 		S1, TIMERLIM(Zero)			; Sets TLIM = 500 ms
-	LW 		T0, BIT4(Zero)				; For turning on IE bit for devices
+	ADDI 	Zero, T0, 16				; For turning on IE bit for devices
 	SW 		T0, KEYCTRL(Zero)
 	SW 		T0, SWITCHCTRL(Zero)
 	SW 		T0, TIMERCTRL(Zero)
 	RSR 	T0, PCS
-	ORI		T0, T0, BIT0				; For turning on IE bit for PCS
+	ORI		T0, T0, 1					; For turning on IE bit for PCS
 	WRS 	PCS, T0
 
 InfiniteLoop:
