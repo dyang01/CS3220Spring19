@@ -1,83 +1,139 @@
-; Addresses for I/O
-.NAME	HEX = 	0xFFFFF000
-.NAME	LEDR =	0xFFFFF020
-.NAME	KEY = 	0xFFFFF080
-.NAME 	TIMER = 0xFFFFF104
+.ORG 	0x10
+InterruptHandler:
+	; Interrupts are disabled by HW before this
+	RSR		T0, IDN 								; T0 is interrupt device number
+	LW 		T1, TI(0)
+	BEQ 	T0, T1, TimerHandler 		; Is a timer interrupt
+	LW 		T1, KY(0)
+	BEQ 	T0, T1, KeyHandler 			; Is a key interrupt
+	LW 		T1, SW(0)
+	BEQ 	T0, T1, SwitchHandler 	; Is a switch interrupt
+	; Execution should not occur here!!
+	RETI
 
-; IDN Values
-.NAME	BT	= 00
-.NAME	SW	= 01
-.NAME	TI	= 10
+TimerHandler: ; Branch to UpperBlink, LowerBlink, or FullBlink based on state (0 -> 8) A1. 
+	BNE 	A3, Zero, NoBlink 			; if blink_state = 1, then turn off LEDs.
+	ADDI 	Zero, T1, 3 						; T1 = 3.
+	BLT 	A1, T1, UpperBlink 			; turn on upper LED if state < 3 	
+	ADDI	T1, T1, 3 							; T1 = 6.
+	BLT 	A1, T1, LowerBlink 			; turn on lower LED if state < 6
+	ADDI 	T1, T1, 3 							; T1 = 9
+	BLT 	A1, T1, FullBlink 			; turn on full LED if state < 9
+	RETI
+
+KeyHandler: 	
+	LW 		T1, KEY(Zero) 					; Loads T1 with state of all 4 KEY values
+	BEQ 	T0, T1, Slow 						; T0 is already 1 from KEY IDN == 1. If KEY 0 pressed, then 0001. Slow down.
+	BR Fast
+	RETI
+
+SwitchHandler:
+		LW 		T1, SWITCH(Zero) 				; Loads T1 with state of all 10 SWITCH values.
+		LW 		S0, BIT0(Zero) 					; checks for position of each switch
+		BGE 	T1, S0, Not0
+		ADDI 	Zero, S2, 0
+		RETI
+	Not0:
+		LW 		S0, BIT1(Zero)
+		BGE 	T1, S0, Not1
+		ADDI 	Zero, S2, 1
+		RETI
+	Not1:
+		LW 		S0, BIT2(Zero)
+		BGE 	T1, S0, NOT2
+		ADDI 	Zero, S2, 2
+		RETI
+	Not2:
+		LW 		S0, BIT3(Zero)
+		BGE 	T1, S0, NOT3
+		ADDI 	Zero, S2, 3
+		RETI
+	Not3:
+		ADDI 	Zero, S2, 4
+		RETI
+
 
 ; Processor Initialization
 	.ORG	0x100
 	XOR		Zero, Zero, Zero			; Zero the Zero register
 	ADDI	Zero, A0, 2					; Sets default speed to be 2
-	SW		A0, HEX(Zero)				; Displays speed on HEX 	
+	SW		A0, HEX(S2)				; Displays speed on HEX 	
 	ADD 	A1, Zero, Zero 				; Sets blink state to 0
-	ADDI  	Zero, A2, 250 				; A2 = 250
-	ADDI 	Zero, S0, TIMER 			; S0 = address of timer.
+	ADD 	A3, Zero, Zero 				; Sets on/off state to 0
+	ADDI 	Zero, A2, 250 				; A2 = 250
 	ADDI 	Zero, S1, 500 				; S1 = blink time in millis . S1 = 500 ms (default)
 	SW 		S1, TIMER(Zero)				; Sets TLIM = 500 ms
+	ADD 	S2, Zero, Zero 				; HEX selection
 
 InfiniteLoop:
 	BR		InfiniteLoop 				; Main Loop. Interrupts should occur here.
 
-; Currently a memory leak from adding to stack and never removing from stack.
-InterruptHandler:						; Begins at interrupt start.
-; _____________________________________________________________________ NOT SURE IF GOOD
-	ANDI	PCS, PCS, 0xFFFFFFFE		; Diasbled interrupts. Sets IE = 0
-	ADDI	SSP, SSP, -8				; Grows stack. Saves 2 regs.
-	SW		T0, 0(SSP)					; Saves T0 to system stack
-	SW		T1, 4(SSP)					; Saves T1 to system stack
-; _____________________________________________________________________
-	RSR		T0, IDN						; Get cause of interrupt.
-	BEQ		T0, Zero, Timer				; If IDN == 0, then Timer interrupt
-	ADDI 	Zero, T1, 1
-	BNE 	T1, T0, InfiniteLoop 		; If NOT a KEY, then ignore interrupt. Back to main loop.
-										; This code is ONLY executed if KEY interrupt
-	LW 		T0, KEY(Zero)				; Loads T0 with state of all 4 KEY values
-	BEQ 	T0, T1, Slow 				; If KEY[0] == 1 then Slow
-	BR 		Fast 						; If not KEY[0] then KEY[1].
-
-Timer:
-	BEQ 	A1, Zero, UpperBlink 		; Check if state == 0. Then UpperBlink
-	ADDI 	Zero, T0, 1
-	BEQ		A1, T0, LowerBlink 			; Check if state == 1. Then LowerBlink
-	BR 		FullBlink		 			; Must be FullBlink
-
 UpperBlink:
 	ADDI 	Zero, T0, 0x3E0 			; 3E0 is top 5 LEDs.
 	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, 1 					; Increments state to 1.
-	BR 		InfiniteLoop 				; Returns to main loop.	
+	ADDI 	A1, A1, 1 					; Increments state
+	ADDI 	A3, A3, 1 					; Increments blink_state
+	RETI							 				; Returns to main loop.	
 
 LowerBlink:
 	ADDI 	Zero, T0, 0x1F 				; 1F is bottom 5 LEDs
-	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, 1 					; Increments state to 2.
-	BR 		InfiniteLoop 				; Returns to main loop. 
+	SW 		T0, LEDR(Zero)				; Writes LowerBlink to LEDR.
+	ADDI 	A1, A1, 1 					; Increments state
+	ADDI 	A3, A3, 1 					; Increments blink_state
+	RETI							 				; Returns to main loop. 
 
 FullBlink:
-	ADDI 	Zero, T0, 0x3FF				; 3FF is bottom 5 LEDs
-	SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
-	ADDI 	A1, A1, -2 					; Increments state to 0.
-	BR 		InfiniteLoop 				; Returns to main loop. 
+	ADDI 	Zero, T0, 0x3FF				; 3FF is all LEDs
+	SW 		T0, LEDR(Zero)				; Writes FullBlink to LEDR.
+	ADDI 	Zero, T0, 9 				; T0 = 9
+	ADDI 	A1, A1, 1 					; Increments state
+	ADDI 	A3, A3, 1 					; Increments blink_state
+	BNE 	T0, A1, EndInterruptHandler 	; If T0 == A1 then reset A1. else go to back to main loop
+	ADDI 	Zero, A1, 0					; State = 0
+	RETI						 				; Returns to main loop. 
+
+NoBlink:
+	ADDI 	Zero, T0, 0x0 					; Turns off LEDs
+	SW 		T0, LEDR(Zero) 					; Writes NoBlink to LEDR.
+	ADD 	A3, Zero, Zero					; blink_state = 0;
+	RETI							  					; Returns to main loop.
 
 Fast:
 	ADDI 	Zero, T0, 1
-	BEQ 	T0, A0, InfiniteLoop 		; If A0 (state) == 1, already at min. Ignore.
+	BEQ 	T0, A0, EndInterruptHandler 		; If A0 (state) == 1, already at min. Ignore.
 	ADDI 	A0, A0, -1 					; Decrement state.
-	SW 		A0, HEX(Zero) 				; Display new state on HEX
+	SW 		A0, HEX(S2) 				; Display new state on HEX
 	ADDI 	S1, S1, -250 				; Decrease blink time by 250 ms
 	SW 		S1, TIMER(Zero) 			; Set new TLIM
-	BR 		InfiniteLoop
+	RETI
 
 Slow:
 	ADDI 	Zero, T0, 8
-	BEQ 	T0, A0, InfiniteLoop 		; If A0 (state) == 8, already at max. Ignore.
+	BEQ 	T0, A0, EndInterruptHandler 		; If A0 (state) == 8, already at max. Ignore.
 	ADDI 	A0, A0, 1 					; Increment state.
-	SW 		A0, HEX(Zero) 				; Display new state on HEX
+	SW 		A0, HEX(S2) 				; Display new state on HEX
 	ADDI 	S1, S1, 250 				; Increase blink time by 250 ms
 	SW 		S1, TIMER(Zero) 			; Set new TLIM
-	BR 		InfiniteLoop
+	RETI
+
+EndInterruptHandler:
+	RETI
+
+; Addresses for I/O
+.NAME	HEX = 	0xFFFFF000
+.NAME	LEDR =	0xFFFFF020
+.NAME	KEY = 	0xFFFFF080
+.NAME SWITCH = 0xFFFFF090
+.NAME TIMER = 0xFFFFF104
+
+; IDN Values
+.NAME	TI	= 00
+.NAME	KY	= 01
+.NAME	SW	= 10
+
+; Bit masks
+.NAME	BIT0 = 0x1
+.NAME BIT1 = 0x2
+.NAME	BIT2 = 0x4
+.NAME	BIT3 = 0x8
+.NAME	BIT4 = 0x10
