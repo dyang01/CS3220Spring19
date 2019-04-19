@@ -12,13 +12,13 @@ InterruptHandler:
 	RETI
 
 TimerHandler: ; Branch to UpperBlink, LowerBlink, or FullBlink based on state (0 -> 8) A1. 
-	BNE 	A3, Zero, NoBlink 			; if blink_state = 1, then turn off LEDs.
 	ADDI 	Zero, T1, 3 						; T1 = 3.
 	BLT 	A1, T1, UpperBlink 			; turn on upper LED if state < 3 	
 	ADDI	T1, T1, 3 							; T1 = 6.
 	BLT 	A1, T1, LowerBlink 			; turn on lower LED if state < 6
 	ADDI 	T1, T1, 3 							; T1 = 9
 	BLT 	A1, T1, FullBlink 			; turn on full LED if state < 9
+	ADDI 	Zero, A1, 0
 	BR 		EndInterruptHandler
 
 KeyHandler:
@@ -70,7 +70,6 @@ SwitchHandler:
 	ADDI	Zero, A0, 2					; Sets default speed to be 2
 	SW		A0, HEX(Zero)				; Displays speed on HEX0
 	ADD 	A1, Zero, Zero 				; Sets blink state to 0
-	ADD 	A3, Zero, Zero 				; Sets on/off state to 0
 	ADDI 	Zero, S1, 500				; S1 = blink time in millis . S1 = 500 ms (default)
 	SW 		S1, TIMERLIM(Zero)			; Sets TLIM = 500 ms
 	ADDI 	Zero, T0, 16				; For turning on IE bit for devices
@@ -85,34 +84,28 @@ InfiniteLoop:
 	BR		InfiniteLoop 				; Main Loop. Interrupts should occur here.
 
 	UpperBlink:
-		ADDI 	Zero, T0, 0x3E0 			; 3E0 is top 5 LEDs.
+		LW 		T0, LEDR(Zero)
+		NOT 	T0, T0
 		SW 		T0, LEDR(Zero)				; Writes UpperBlink to LEDR.
 		ADDI 	A1, A1, 1 					; Increments state
-		ADDI 	A3, A3, 1 					; Increments blink_state
 		RETI							 				; Returns to main loop.	
 
 	LowerBlink:
-		ADDI 	Zero, T0, 0x1F 				; 1F is bottom 5 LEDs
+		LW 		T0, LEDR(Zero)
+		NOT 	T0, T0
 		SW 		T0, LEDR(Zero)				; Writes LowerBlink to LEDR.
 		ADDI 	A1, A1, 1 					; Increments state
-		ADDI 	A3, A3, 1 					; Increments blink_state
 		RETI							 				; Returns to main loop. 
 
 	FullBlink:
-		ADDI 	Zero, T0, 0x3FF				; 3FF is all LEDs
+		LW 		T0, LEDR(Zero)
+		NOT 	T0, T0
 		SW 		T0, LEDR(Zero)				; Writes FullBlink to LEDR.
 		ADDI 	Zero, T0, 9 				; T0 = 9
 		ADDI 	A1, A1, 1 					; Increments state
-		ADDI 	A3, A3, 1 					; Increments blink_state
 		BNE 	T0, A1, EndInterruptHandler 	; If T0 == A1 then reset A1. else go to back to main loop
 		ADDI 	Zero, A1, 0					; State = 0
 		RETI						 					; Returns to main loop. 
-
-	NoBlink:
-		ADDI 	Zero, T0, 0x0 				; Turns off LEDs
-		SW 		T0, LEDR(Zero) 				; Writes NoBlink to LEDR.
-		ADD 	A3, Zero, Zero				; blink_state = 0;
-		RETI							  				; Returns to main loop.
 
 	Fast:
 		ADDI 	Zero, T0, 1
